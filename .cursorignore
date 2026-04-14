@@ -1,0 +1,4 @@
+﻿# Riduce lock EPERM su cache Next / build mentre Cursor indicizza il workspace
+.next/
+next-dev-dist/
+next-cache/
