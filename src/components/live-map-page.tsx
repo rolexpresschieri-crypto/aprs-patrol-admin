@@ -133,7 +133,7 @@ export function LiveMapPage() {
   const [adminAccessFilter, setAdminAccessFilter] = useState("all");
   const [adminRoleFilter, setAdminRoleFilter] = useState("all");
   const [sessionRecords, setSessionRecords] = useState<PatrolSessionRecord[]>([]);
-  const [adminsModalOpen, setAdminsModalOpen] = useState(false);
+  const [adminsManageExpanded, setAdminsManageExpanded] = useState(false);
   const [adminAccountRows, setAdminAccountRows] = useState<AdminAccountRow[]>([]);
   const [adminsModalLoading, setAdminsModalLoading] = useState(false);
   const [adminsModalError, setAdminsModalError] = useState<string | null>(null);
@@ -153,9 +153,15 @@ export function LiveMapPage() {
   useEffect(() => {
     if (isViewer && adminView === "admin-accounts") {
       setAdminView("live-map");
-      setAdminsModalOpen(false);
+      setAdminsManageExpanded(false);
     }
   }, [isViewer, adminView]);
+
+  useEffect(() => {
+    if (adminView !== "admin-accounts") {
+      setAdminsManageExpanded(false);
+    }
+  }, [adminView]);
 
   useEffect(() => {
     const rawSession = window.localStorage.getItem(ADMIN_SESSION_STORAGE_KEY);
@@ -1363,15 +1369,51 @@ export function LiveMapPage() {
     }
   }, [session]);
 
-  function openAdminsManageModal() {
-    setAdminsModalOpen(true);
+  function expandAdminsManageAndLoad() {
+    setAdminsManageExpanded(true);
     resetAdminsForm();
     void loadAdminAccountsForModal();
   }
 
-  function closeAdminsManageModal() {
-    setAdminsModalOpen(false);
+  function collapseAdminsManage() {
+    setAdminsManageExpanded(false);
     resetAdminsForm();
+  }
+
+  async function deleteAdminAccount(row: AdminAccountRow) {
+    if (!session) {
+      return;
+    }
+    const ok = window.confirm(
+      `Eliminare definitivamente l'account «${row.admin_name}» (${row.admin_code})?\n\nL'operazione non è annullabile.`,
+    );
+    if (!ok) {
+      return;
+    }
+    setAdminsModalLoading(true);
+    setAdminsModalError(null);
+    try {
+      const res = await fetch("/api/admins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session, action: "delete", id: row.id }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        throw new Error(json.error ?? `HTTP ${res.status}`);
+      }
+      setMessage(`Account «${row.admin_code}» eliminato.`);
+      if (adminsFormMode === "edit" && adminsEditingId === row.id) {
+        resetAdminsForm();
+      }
+      await loadAdminAccountsForModal();
+    } catch (error) {
+      setAdminsModalError(
+        error instanceof Error ? error.message : "Eliminazione non riuscita.",
+      );
+    } finally {
+      setAdminsModalLoading(false);
+    }
   }
 
   function startCreateAdminAccount() {
@@ -2413,11 +2455,12 @@ export function LiveMapPage() {
                     <button
                       className={styles.mapAction}
                       onClick={() => {
-                        openAdminsManageModal();
+                        setAdminView("admin-accounts");
+                        expandAdminsManageAndLoad();
                       }}
                       type="button"
                     >
-                      Crea / modifica account
+                      Gestione account
                     </button>
                   ) : null}
                   <button
@@ -2499,12 +2542,14 @@ export function LiveMapPage() {
           </section>
         ) : adminView === "admin-accounts" ? (
           <section className={styles.accessWrap}>
-            <section className={styles.panelCard}>
+            <section
+              className={`${styles.panelCard} ${styles.adminAccountsPanel}`}
+            >
               <div className={styles.panelHeader}>
                 <div className={styles.panelHeaderTitle}>
                   <h2>Account admin e viewer</h2>
                   <p>
-                    Gestione utenti del pannello PC: login, nome, ruolo e abilitazione.
+                    Gestione utenti del pannello PC: login, nome, ruolo, eliminazione.
                     Richiede Supabase Live e permessi da amministratore.
                   </p>
                 </div>
@@ -2513,11 +2558,17 @@ export function LiveMapPage() {
                     <button
                       className={styles.mapAction}
                       onClick={() => {
-                        openAdminsManageModal();
+                        if (adminsManageExpanded) {
+                          collapseAdminsManage();
+                        } else {
+                          expandAdminsManageAndLoad();
+                        }
                       }}
                       type="button"
                     >
-                      Crea / modifica account
+                      {adminsManageExpanded
+                        ? "Chiudi gestione account"
+                        : "Crea / modifica account"}
                     </button>
                   ) : (
                     <span className={styles.emptyState}>
@@ -2528,6 +2579,211 @@ export function LiveMapPage() {
                   )}
                 </div>
               </div>
+
+              {adminsManageExpanded && canEdit && supabase ? (
+                <div className={styles.adminsInlinePanel}>
+                  <div className={styles.adminsInlineIntro}>
+                    <p>
+                      Elenco da Supabase (<code>admins</code>). Puoi creare, modificare o
+                      eliminare account; non puoi eliminare l&apos;ultimo admin né il tuo
+                      utente attuale.
+                    </p>
+                  </div>
+
+                  {adminsModalError ? (
+                    <div className={styles.adminsModalError}>{adminsModalError}</div>
+                  ) : null}
+
+                  <div className={styles.adminsModalToolbar}>
+                    <button
+                      className={styles.mapAction}
+                      disabled={adminsModalLoading}
+                      onClick={() => {
+                        startCreateAdminAccount();
+                      }}
+                      type="button"
+                    >
+                      Nuovo account
+                    </button>
+                    <button
+                      className={styles.ghostButton}
+                      disabled={adminsModalLoading}
+                      onClick={() => {
+                        void loadAdminAccountsForModal();
+                      }}
+                      type="button"
+                    >
+                      Ricarica lista
+                    </button>
+                  </div>
+
+                  <div className={styles.adminsInlineTableWrap}>
+                    {adminsModalLoading && adminAccountRows.length === 0 ? (
+                      <div className={styles.emptyState}>Caricamento…</div>
+                    ) : adminAccountRows.length === 0 ? (
+                      <div className={styles.emptyState}>
+                        Nessun account in tabella admins.
+                      </div>
+                    ) : (
+                      <table className={styles.registryTable}>
+                        <thead>
+                          <tr>
+                            <th>Login</th>
+                            <th>Nome</th>
+                            <th>Ruolo</th>
+                            <th>Abilitato</th>
+                            <th />
+                            <th />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {adminAccountRows.map((row) => (
+                            <tr key={row.id}>
+                              <td>{row.admin_code}</td>
+                              <td>{row.admin_name}</td>
+                              <td>{row.role}</td>
+                              <td>{row.is_enabled ? "Sì" : "No"}</td>
+                              <td>
+                                <button
+                                  className={styles.ghostButton}
+                                  disabled={adminsModalLoading}
+                                  onClick={() => {
+                                    startEditAdminAccount(row);
+                                  }}
+                                  type="button"
+                                >
+                                  Modifica
+                                </button>
+                              </td>
+                              <td>
+                                <button
+                                  className={styles.dangerGhostButton}
+                                  disabled={adminsModalLoading}
+                                  onClick={() => {
+                                    void deleteAdminAccount(row);
+                                  }}
+                                  type="button"
+                                >
+                                  Elimina
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+
+                  {adminsFormMode !== "idle" ? (
+                    <div className={styles.adminsModalForm}>
+                      <h3>
+                        {adminsFormMode === "create" ? "Nuovo" : "Modifica"} account
+                      </h3>
+                      <div className={styles.formGrid}>
+                        <div className={styles.fieldGroup}>
+                          <label htmlFor="admins-form-code">Login (admin_code)</label>
+                          <input
+                            id="admins-form-code"
+                            autoComplete="off"
+                            disabled={adminsModalLoading}
+                            onChange={(event) =>
+                              setAdminsFormCode(
+                                event.target.value.trim().toLowerCase(),
+                              )
+                            }
+                            value={adminsFormCode}
+                          />
+                        </div>
+                        <div className={styles.fieldGroup}>
+                          <label htmlFor="admins-form-name">Nome</label>
+                          <input
+                            id="admins-form-name"
+                            disabled={adminsModalLoading}
+                            onChange={(event) => setAdminsFormName(event.target.value)}
+                            value={adminsFormName}
+                          />
+                        </div>
+                        <div className={styles.fieldGroup}>
+                          <label htmlFor="admins-form-role">Ruolo</label>
+                          <select
+                            id="admins-form-role"
+                            disabled={adminsModalLoading}
+                            onChange={(event) =>
+                              setAdminsFormRole(
+                                event.target.value === "viewer" ? "viewer" : "admin",
+                              )
+                            }
+                            value={adminsFormRole}
+                          >
+                            <option value="admin">admin</option>
+                            <option value="viewer">viewer</option>
+                          </select>
+                        </div>
+                        <div className={styles.fieldGroup}>
+                          <label
+                            className={styles.inlineToggleRow}
+                            htmlFor="admins-form-enabled"
+                          >
+                            <input
+                              checked={adminsFormEnabled}
+                              disabled={adminsModalLoading}
+                              id="admins-form-enabled"
+                              onChange={(event) =>
+                                setAdminsFormEnabled(event.target.checked)
+                              }
+                              type="checkbox"
+                            />
+                            Account abilitato
+                          </label>
+                        </div>
+                        <div className={styles.fieldGroup}>
+                          <label htmlFor="admins-form-pin">
+                            Password
+                            {adminsFormMode === "edit"
+                              ? " (vuoto = non cambiare)"
+                              : " (obbligatoria)"}
+                          </label>
+                          <input
+                            id="admins-form-pin"
+                            autoComplete="new-password"
+                            disabled={adminsModalLoading}
+                            onChange={(event) => setAdminsFormPin(event.target.value)}
+                            type="password"
+                            value={adminsFormPin}
+                          />
+                        </div>
+                      </div>
+                      <div className={styles.adminsModalFormActions}>
+                        <button
+                          className={styles.mapAction}
+                          disabled={
+                            adminsModalLoading ||
+                            !adminsFormCode.trim() ||
+                            !adminsFormName.trim() ||
+                            (adminsFormMode === "create" && !adminsFormPin.trim())
+                          }
+                          onClick={() => {
+                            void submitAdminsForm();
+                          }}
+                          type="button"
+                        >
+                          Salva
+                        </button>
+                        <button
+                          className={styles.ghostButton}
+                          disabled={adminsModalLoading}
+                          onClick={() => {
+                            resetAdminsForm();
+                          }}
+                          type="button"
+                        >
+                          Annulla modulo
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </section>
           </section>
         ) : (
@@ -2603,219 +2859,6 @@ export function LiveMapPage() {
           </section>
         )}
       </main>
-
-      {adminsModalOpen ? (
-        <div
-          className={styles.adminsModalBackdrop}
-          onClick={() => {
-            if (!adminsModalLoading) {
-              closeAdminsManageModal();
-            }
-          }}
-          role="presentation"
-        >
-          <div
-            className={styles.adminsModalCard}
-            onClick={(event) => {
-              event.stopPropagation();
-            }}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="admins-modal-title"
-          >
-            <div className={styles.adminsModalHeader}>
-              <div>
-                <h2 id="admins-modal-title">Account backend (admin / viewer)</h2>
-                <p className={styles.adminsModalSub}>
-                  Solo amministratori. Le password sono salvate come nel login attuale
-                  (campo pin su Supabase).
-                </p>
-              </div>
-              <button
-                className={styles.adminsModalClose}
-                disabled={adminsModalLoading}
-                onClick={() => {
-                  closeAdminsManageModal();
-                }}
-                type="button"
-              >
-                Chiudi
-              </button>
-            </div>
-
-            {adminsModalError ? (
-              <div className={styles.adminsModalError}>{adminsModalError}</div>
-            ) : null}
-
-            <div className={styles.adminsModalToolbar}>
-              <button
-                className={styles.mapAction}
-                disabled={adminsModalLoading}
-                onClick={() => {
-                  startCreateAdminAccount();
-                }}
-                type="button"
-              >
-                Nuovo account
-              </button>
-              <button
-                className={styles.ghostButton}
-                disabled={adminsModalLoading}
-                onClick={() => {
-                  void loadAdminAccountsForModal();
-                }}
-                type="button"
-              >
-                Ricarica lista
-              </button>
-            </div>
-
-            <div className={styles.adminsModalTableWrap}>
-              {adminsModalLoading && adminAccountRows.length === 0 ? (
-                <div className={styles.emptyState}>Caricamento…</div>
-              ) : adminAccountRows.length === 0 ? (
-                <div className={styles.emptyState}>Nessun account in tabella admins.</div>
-              ) : (
-                <table className={styles.registryTable}>
-                  <thead>
-                    <tr>
-                      <th>Login</th>
-                      <th>Nome</th>
-                      <th>Ruolo</th>
-                      <th>Abilitato</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {adminAccountRows.map((row) => (
-                      <tr key={row.id}>
-                        <td>{row.admin_code}</td>
-                        <td>{row.admin_name}</td>
-                        <td>{row.role}</td>
-                        <td>{row.is_enabled ? "Sì" : "No"}</td>
-                        <td>
-                          <button
-                            className={styles.ghostButton}
-                            disabled={adminsModalLoading}
-                            onClick={() => {
-                              startEditAdminAccount(row);
-                            }}
-                            type="button"
-                          >
-                            Modifica
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            {adminsFormMode !== "idle" ? (
-              <div className={styles.adminsModalForm}>
-                <h3>{adminsFormMode === "create" ? "Nuovo" : "Modifica"} account</h3>
-                <div className={styles.formGrid}>
-                  <div className={styles.fieldGroup}>
-                    <label htmlFor="admins-form-code">Login (admin_code)</label>
-                    <input
-                      id="admins-form-code"
-                      autoComplete="off"
-                      disabled={adminsModalLoading}
-                      onChange={(event) =>
-                        setAdminsFormCode(event.target.value.trim().toLowerCase())
-                      }
-                      value={adminsFormCode}
-                    />
-                  </div>
-                  <div className={styles.fieldGroup}>
-                    <label htmlFor="admins-form-name">Nome</label>
-                    <input
-                      id="admins-form-name"
-                      disabled={adminsModalLoading}
-                      onChange={(event) => setAdminsFormName(event.target.value)}
-                      value={adminsFormName}
-                    />
-                  </div>
-                  <div className={styles.fieldGroup}>
-                    <label htmlFor="admins-form-role">Ruolo</label>
-                    <select
-                      id="admins-form-role"
-                      disabled={adminsModalLoading}
-                      onChange={(event) =>
-                        setAdminsFormRole(
-                          event.target.value === "viewer" ? "viewer" : "admin",
-                        )
-                      }
-                      value={adminsFormRole}
-                    >
-                      <option value="admin">admin</option>
-                      <option value="viewer">viewer</option>
-                    </select>
-                  </div>
-                  <div className={styles.fieldGroup}>
-                    <label className={styles.inlineToggleRow} htmlFor="admins-form-enabled">
-                      <input
-                        checked={adminsFormEnabled}
-                        disabled={adminsModalLoading}
-                        id="admins-form-enabled"
-                        onChange={(event) =>
-                          setAdminsFormEnabled(event.target.checked)
-                        }
-                        type="checkbox"
-                      />
-                      Account abilitato
-                    </label>
-                  </div>
-                  <div className={styles.fieldGroup}>
-                    <label htmlFor="admins-form-pin">
-                      Password
-                      {adminsFormMode === "edit"
-                        ? " (vuoto = non cambiare)"
-                        : " (obbligatoria)"}
-                    </label>
-                    <input
-                      id="admins-form-pin"
-                      autoComplete="new-password"
-                      disabled={adminsModalLoading}
-                      onChange={(event) => setAdminsFormPin(event.target.value)}
-                      type="password"
-                      value={adminsFormPin}
-                    />
-                  </div>
-                </div>
-                <div className={styles.adminsModalFormActions}>
-                  <button
-                    className={styles.mapAction}
-                    disabled={
-                      adminsModalLoading ||
-                      !adminsFormCode.trim() ||
-                      !adminsFormName.trim() ||
-                      (adminsFormMode === "create" && !adminsFormPin.trim())
-                    }
-                    onClick={() => {
-                      void submitAdminsForm();
-                    }}
-                    type="button"
-                  >
-                    Salva
-                  </button>
-                  <button
-                    className={styles.ghostButton}
-                    disabled={adminsModalLoading}
-                    onClick={() => {
-                      resetAdminsForm();
-                    }}
-                    type="button"
-                  >
-                    Annulla modulo
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
       </div>
       </div>
   );

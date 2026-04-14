@@ -91,6 +91,67 @@ export async function POST(request: Request) {
     return NextResponse.json({ admins: data ?? [] });
   }
 
+  if (action === "delete") {
+    const id = typeof payload.id === "string" ? payload.id.trim() : "";
+    if (!id || !UUID_RE.test(id)) {
+      return NextResponse.json({ error: "Id account non valido" }, { status: 400 });
+    }
+
+    const { data: target, error: selErr } = await admin
+      .from("admins")
+      .select("id, admin_code, role")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (selErr) {
+      return NextResponse.json({ error: selErr.message }, { status: 500 });
+    }
+
+    if (!target) {
+      return NextResponse.json({ error: "Account non trovato" }, { status: 404 });
+    }
+
+    const targetCode = String(target.admin_code ?? "")
+      .trim()
+      .toLowerCase();
+    if (targetCode === session.code.trim().toLowerCase()) {
+      return NextResponse.json(
+        {
+          error:
+            "Non puoi eliminare l'account con cui sei collegato. Effettua logout con un altro admin.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (normalizeAdminRole(target.role as string | null) === "admin") {
+      const { data: adminRows, error: listErr } = await admin
+        .from("admins")
+        .select("id")
+        .eq("role", "admin");
+
+      if (listErr) {
+        return NextResponse.json({ error: listErr.message }, { status: 500 });
+      }
+
+      const n = adminRows?.length ?? 0;
+      if (n <= 1) {
+        return NextResponse.json(
+          { error: "Impossibile eliminare l'ultimo account amministratore." },
+          { status: 400 },
+        );
+      }
+    }
+
+    const { error: delErr } = await admin.from("admins").delete().eq("id", id);
+
+    if (delErr) {
+      return NextResponse.json({ error: delErr.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+  }
+
   const row = payload.admin;
   if (!row || typeof row !== "object") {
     return NextResponse.json({ error: "Dati account mancanti" }, { status: 400 });
@@ -191,7 +252,10 @@ export async function POST(request: Request) {
     if (pin.length > 0) {
       if (pin.length < 4 || pin.length > 200) {
         return NextResponse.json(
-          { error: "Nuova password: minimo 4 caratteri, massimo 200 (o lascia vuoto per non cambiare)."},
+          {
+            error:
+              "Nuova password: minimo 4 caratteri, massimo 200 (o lascia vuoto per non cambiare).",
+          },
           { status: 400 },
         );
       }
