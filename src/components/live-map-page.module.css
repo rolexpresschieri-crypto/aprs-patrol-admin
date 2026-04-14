@@ -7,6 +7,26 @@
   overflow: hidden;
 }
 
+/* Colonna destra: contenuto + overlay modale (non copre la sidebar) */
+.mainColumn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.mainColumn > main {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.mainColumn > main.content {
+  height: auto;
+}
+
 .sidebar {
   border-right: 1px solid #17306b;
   background: linear-gradient(180deg, #05070d 0%, #091228 100%);
@@ -1254,36 +1274,36 @@
   }
 
   .adminsModalBackdrop {
-    padding: 52px 12px 12px;
+    padding: 40px 10px 10px;
   }
 
   .adminsModalCard {
-    width: calc(100vw - 24px);
-    max-width: calc(100vw - 24px);
-    height: calc(100vh - 68px);
-    max-height: calc(100vh - 68px);
+    width: calc(100% - 20px);
+    max-width: calc(100% - 20px);
+    height: calc(100% - 52px);
+    max-height: calc(100% - 52px);
     padding: 16px 14px 16px;
   }
 }
 
 .adminsModalBackdrop {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 80;
+  z-index: 1400;
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 64px 20px 20px;
+  padding: 48px 18px 18px;
   background: rgba(4, 8, 18, 0.72);
   backdrop-filter: blur(6px);
   overflow-y: auto;
 }
 
 .adminsModalCard {
-  width: calc(100vw - 40px);
-  max-width: calc(100vw - 40px);
-  height: calc(100vh - 84px);
-  max-height: calc(100vh - 84px);
+  width: calc(100% - 36px);
+  max-width: calc(100% - 36px);
+  height: calc(100% - 66px);
+  max-height: calc(100% - 66px);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;

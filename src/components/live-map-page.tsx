@@ -1556,7 +1556,6 @@ export function LiveMapPage() {
   }
 
   return (
-    <>
       <div className={styles.shell}>
       <aside className={styles.sidebar}>
         <div className={styles.sidebarTop}>
@@ -1631,6 +1630,7 @@ export function LiveMapPage() {
         </div>
       </aside>
 
+      <div className={styles.mainColumn}>
       <main
         className={
           adminView === "live-sessions"
@@ -2603,7 +2603,6 @@ export function LiveMapPage() {
           </section>
         )}
       </main>
-      </div>
 
       {adminsModalOpen ? (
         <div
@@ -2817,6 +2816,7 @@ export function LiveMapPage() {
           </div>
         </div>
       ) : null}
-    </>
+      </div>
+      </div>
   );
 }
