@@ -1252,6 +1252,18 @@
   .headerActions {
     justify-content: flex-start;
   }
+
+  .adminsModalBackdrop {
+    padding: 52px 12px 12px;
+  }
+
+  .adminsModalCard {
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+    height: calc(100vh - 68px);
+    max-height: calc(100vh - 68px);
+    padding: 16px 14px 16px;
+  }
 }
 
 .adminsModalBackdrop {
@@ -1261,19 +1273,25 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 48px 16px 24px;
+  padding: 64px 20px 20px;
   background: rgba(4, 8, 18, 0.72);
   backdrop-filter: blur(6px);
   overflow-y: auto;
 }
 
 .adminsModalCard {
-  width: min(920px, 100%);
+  width: calc(100vw - 40px);
+  max-width: calc(100vw - 40px);
+  height: calc(100vh - 84px);
+  max-height: calc(100vh - 84px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
   border-radius: 16px;
   border: 1px solid #2b4278;
   background: linear-gradient(180deg, #0a1224 0%, #06080f 100%);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-  padding: 22px 22px 26px;
+  padding: 20px 22px 22px;
   color: #edf2ff;
 }
 
@@ -1282,7 +1300,8 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
 }
 
 .adminsModalHeader h2 {
@@ -1316,35 +1335,41 @@
 }
 
 .adminsModalError {
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid #8b2942;
   background: rgba(139, 41, 66, 0.2);
   color: #ffb4c6;
   font-size: 13px;
+  flex-shrink: 0;
 }
 
 .adminsModalToolbar {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
 }
 
 .adminsModalTableWrap {
-  max-height: min(320px, 40vh);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
   border-radius: 12px;
   border: 1px solid #1f335f;
 }
 
 .adminsModalForm {
   border-top: 1px solid #1f335f;
-  padding-top: 16px;
+  padding-top: 14px;
   display: grid;
   gap: 12px;
+  flex-shrink: 0;
+  max-height: min(42vh, 360px);
+  overflow-y: auto;
 }
 
 .adminsModalForm h3 {
