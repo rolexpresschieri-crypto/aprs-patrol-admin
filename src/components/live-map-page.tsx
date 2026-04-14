@@ -3,7 +3,13 @@
 import dynamic from "next/dynamic";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   ADMIN_SESSION_STORAGE_KEY,
   normalizeAdminRole,
@@ -54,6 +60,7 @@ type AdminView =
   | "patrols"
   | "export"
   | "admin-access"
+  | "admin-accounts"
   | "live-sessions";
 type AdminAccessEvent = {
   id: string;
@@ -64,12 +71,20 @@ type AdminAccessEvent = {
   occurredAt: string;
 };
 
+type AdminAccountRow = {
+  id: string;
+  admin_code: string;
+  admin_name: string;
+  role: string;
+  is_enabled: boolean;
+};
+
 export function LiveMapPage() {
   const [supabase, setSupabase] = useState<ReturnType<
     typeof getSupabaseBrowserClient
   >>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setSupabase(getSupabaseBrowserClient());
   }, []);
 
@@ -118,9 +133,29 @@ export function LiveMapPage() {
   const [adminAccessFilter, setAdminAccessFilter] = useState("all");
   const [adminRoleFilter, setAdminRoleFilter] = useState("all");
   const [sessionRecords, setSessionRecords] = useState<PatrolSessionRecord[]>([]);
+  const [adminsModalOpen, setAdminsModalOpen] = useState(false);
+  const [adminAccountRows, setAdminAccountRows] = useState<AdminAccountRow[]>([]);
+  const [adminsModalLoading, setAdminsModalLoading] = useState(false);
+  const [adminsModalError, setAdminsModalError] = useState<string | null>(null);
+  const [adminsFormMode, setAdminsFormMode] = useState<"idle" | "create" | "edit">(
+    "idle",
+  );
+  const [adminsEditingId, setAdminsEditingId] = useState<string | null>(null);
+  const [adminsFormCode, setAdminsFormCode] = useState("");
+  const [adminsFormName, setAdminsFormName] = useState("");
+  const [adminsFormPin, setAdminsFormPin] = useState("");
+  const [adminsFormRole, setAdminsFormRole] = useState<"admin" | "viewer">("admin");
+  const [adminsFormEnabled, setAdminsFormEnabled] = useState(true);
 
   const isViewer = session?.role === "viewer";
   const canEdit = session?.role === "admin";
+
+  useEffect(() => {
+    if (isViewer && adminView === "admin-accounts") {
+      setAdminView("live-map");
+      setAdminsModalOpen(false);
+    }
+  }, [isViewer, adminView]);
 
   useEffect(() => {
     const rawSession = window.localStorage.getItem(ADMIN_SESSION_STORAGE_KEY);
@@ -1287,6 +1322,128 @@ export function LiveMapPage() {
     setLoginError(null);
   }
 
+  function resetAdminsForm() {
+    setAdminsFormMode("idle");
+    setAdminsEditingId(null);
+    setAdminsFormCode("");
+    setAdminsFormName("");
+    setAdminsFormPin("");
+    setAdminsFormRole("admin");
+    setAdminsFormEnabled(true);
+    setAdminsModalError(null);
+  }
+
+  const loadAdminAccountsForModal = useCallback(async () => {
+    if (!session) {
+      return;
+    }
+    setAdminsModalLoading(true);
+    setAdminsModalError(null);
+    try {
+      const res = await fetch("/api/admins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session, action: "list" }),
+      });
+      const json = (await res.json()) as {
+        admins?: AdminAccountRow[];
+        error?: string;
+      };
+      if (!res.ok) {
+        throw new Error(json.error ?? `HTTP ${res.status}`);
+      }
+      setAdminAccountRows(json.admins ?? []);
+    } catch (error) {
+      const text =
+        error instanceof Error ? error.message : "Errore caricamento lista.";
+      setAdminsModalError(text);
+      setAdminAccountRows([]);
+    } finally {
+      setAdminsModalLoading(false);
+    }
+  }, [session]);
+
+  function openAdminsManageModal() {
+    setAdminsModalOpen(true);
+    resetAdminsForm();
+    void loadAdminAccountsForModal();
+  }
+
+  function closeAdminsManageModal() {
+    setAdminsModalOpen(false);
+    resetAdminsForm();
+  }
+
+  function startCreateAdminAccount() {
+    setAdminsFormMode("create");
+    setAdminsEditingId(null);
+    setAdminsFormCode("");
+    setAdminsFormName("");
+    setAdminsFormPin("");
+    setAdminsFormRole("viewer");
+    setAdminsFormEnabled(true);
+    setAdminsModalError(null);
+  }
+
+  function startEditAdminAccount(row: AdminAccountRow) {
+    setAdminsFormMode("edit");
+    setAdminsEditingId(row.id);
+    setAdminsFormCode(row.admin_code);
+    setAdminsFormName(row.admin_name);
+    setAdminsFormPin("");
+    setAdminsFormRole(normalizeAdminRole(row.role));
+    setAdminsFormEnabled(row.is_enabled);
+    setAdminsModalError(null);
+  }
+
+  async function submitAdminsForm() {
+    if (!session || adminsFormMode === "idle") {
+      return;
+    }
+    setAdminsModalLoading(true);
+    setAdminsModalError(null);
+    try {
+      const adminPayload = {
+        admin_code: adminsFormCode,
+        admin_name: adminsFormName,
+        pin_plain: adminsFormPin,
+        role: adminsFormRole,
+        is_enabled: adminsFormEnabled,
+      };
+      const body =
+        adminsFormMode === "create"
+          ? { session, action: "create", admin: adminPayload }
+          : {
+              session,
+              action: "update",
+              id: adminsEditingId,
+              admin: adminPayload,
+            };
+      const res = await fetch("/api/admins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        throw new Error(json.error ?? `HTTP ${res.status}`);
+      }
+      setMessage(
+        adminsFormMode === "create"
+          ? "Account backend creato."
+          : "Account backend aggiornato.",
+      );
+      resetAdminsForm();
+      await loadAdminAccountsForModal();
+    } catch (error) {
+      setAdminsModalError(
+        error instanceof Error ? error.message : "Salvataggio non riuscito.",
+      );
+    } finally {
+      setAdminsModalLoading(false);
+    }
+  }
+
   function getNavTarget(item: string): AdminView | null {
     switch (item) {
       case "Mappa Live":
@@ -1297,6 +1454,8 @@ export function LiveMapPage() {
         return "live-sessions";
       case "Accessi Admin":
         return "admin-access";
+      case "Admin":
+        return "admin-accounts";
       case "Export":
         return "export";
       default:
@@ -1313,6 +1472,8 @@ export function LiveMapPage() {
           ? "Sessioni Pattuglie"
         : adminView === "admin-access"
           ? "Accessi Admin"
+          : adminView === "admin-accounts"
+            ? "Gestione account backend"
           : "Export Pattuglie";
 
   const pageEyebrow =
@@ -1324,6 +1485,8 @@ export function LiveMapPage() {
           ? "Patrol Sessions"
         : adminView === "admin-access"
           ? "Admin Audit Trail"
+          : adminView === "admin-accounts"
+            ? "Admin user registry"
           : "Operational Export";
 
   const pageDescription =
@@ -1335,6 +1498,8 @@ export function LiveMapPage() {
           ? "Vista sessioni pattuglie con login, logout, stato e durata operativa."
         : adminView === "admin-access"
           ? "Storico accessi backend con login e logout di admin e viewer."
+          : adminView === "admin-accounts"
+            ? "Crea o modifica account admin e viewer (tabella Supabase admins). Disponibile solo in modalità Live con ruolo amministratore."
           : "Esporta l'elenco pattuglie in formato CSV o PDF per invio rapido agli operatori.";
 
   if (!authChecked) {
@@ -1391,7 +1556,8 @@ export function LiveMapPage() {
   }
 
   return (
-    <div className={styles.shell}>
+    <>
+      <div className={styles.shell}>
       <aside className={styles.sidebar}>
         <div className={styles.sidebarTop}>
           <div className={styles.brand}>
@@ -1413,24 +1579,39 @@ export function LiveMapPage() {
           <nav className={styles.navList}>
             {navigationItems.map((item) => {
               const targetView = getNavTarget(item);
+              const adminNavLocked = item === "Admin" && !canEdit;
               const isActive =
                 (item === "Mappa Live" && adminView === "live-map") ||
                 (item === "Pattuglie" && adminView === "patrols") ||
                 (item === "Sessioni Live" && adminView === "live-sessions") ||
                 (item === "Accessi Admin" && adminView === "admin-access") ||
+                (item === "Admin" && adminView === "admin-accounts") ||
                 (item === "Export" && adminView === "export");
+              const navClassName = [
+                isActive ? styles.navItemActive : styles.navItem,
+                item === "Admin" && canEdit && !isActive
+                  ? styles.navItemAdminAvailable
+                  : "",
+              ]
+                .filter(Boolean)
+                .join(" ");
 
               return (
                 <button
                   key={item}
-                  className={isActive ? styles.navItemActive : styles.navItem}
-                  disabled={!targetView}
+                  className={navClassName}
+                  disabled={!targetView || adminNavLocked}
+                  title={
+                    adminNavLocked
+                      ? "Solo utenti con ruolo amministratore."
+                      : undefined
+                  }
+                  type="button"
                   onClick={() => {
-                    if (targetView) {
+                    if (targetView && !adminNavLocked) {
                       setAdminView(targetView);
                     }
                   }}
-                  type="button"
                 >
                   {item}
                 </button>
@@ -2228,6 +2409,17 @@ export function LiveMapPage() {
                   <p>Audit trail di login e logout per admin e viewer.</p>
                 </div>
                 <div className={styles.panelHeaderActions}>
+                  {canEdit && supabase ? (
+                    <button
+                      className={styles.mapAction}
+                      onClick={() => {
+                        openAdminsManageModal();
+                      }}
+                      type="button"
+                    >
+                      Crea / modifica account
+                    </button>
+                  ) : null}
                   <button
                     className={styles.logoutButton}
                     disabled={!canEdit}
@@ -2300,6 +2492,39 @@ export function LiveMapPage() {
                         ))}
                       </tbody>
                     </table>
+                  )}
+                </div>
+              </div>
+            </section>
+          </section>
+        ) : adminView === "admin-accounts" ? (
+          <section className={styles.accessWrap}>
+            <section className={styles.panelCard}>
+              <div className={styles.panelHeader}>
+                <div className={styles.panelHeaderTitle}>
+                  <h2>Account admin e viewer</h2>
+                  <p>
+                    Gestione utenti del pannello PC: login, nome, ruolo e abilitazione.
+                    Richiede Supabase Live e permessi da amministratore.
+                  </p>
+                </div>
+                <div className={styles.panelHeaderActions}>
+                  {canEdit && supabase ? (
+                    <button
+                      className={styles.mapAction}
+                      onClick={() => {
+                        openAdminsManageModal();
+                      }}
+                      type="button"
+                    >
+                      Crea / modifica account
+                    </button>
+                  ) : (
+                    <span className={styles.emptyState}>
+                      {!canEdit
+                        ? "Profilo viewer: gestione account non disponibile."
+                        : "Connessione Supabase non attiva: usa variabili NEXT_PUBLIC_* e riavvia."}
+                    </span>
                   )}
                 </div>
               </div>
@@ -2378,6 +2603,220 @@ export function LiveMapPage() {
           </section>
         )}
       </main>
-    </div>
+      </div>
+
+      {adminsModalOpen ? (
+        <div
+          className={styles.adminsModalBackdrop}
+          onClick={() => {
+            if (!adminsModalLoading) {
+              closeAdminsManageModal();
+            }
+          }}
+          role="presentation"
+        >
+          <div
+            className={styles.adminsModalCard}
+            onClick={(event) => {
+              event.stopPropagation();
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admins-modal-title"
+          >
+            <div className={styles.adminsModalHeader}>
+              <div>
+                <h2 id="admins-modal-title">Account backend (admin / viewer)</h2>
+                <p className={styles.adminsModalSub}>
+                  Solo amministratori. Le password sono salvate come nel login attuale
+                  (campo pin su Supabase).
+                </p>
+              </div>
+              <button
+                className={styles.adminsModalClose}
+                disabled={adminsModalLoading}
+                onClick={() => {
+                  closeAdminsManageModal();
+                }}
+                type="button"
+              >
+                Chiudi
+              </button>
+            </div>
+
+            {adminsModalError ? (
+              <div className={styles.adminsModalError}>{adminsModalError}</div>
+            ) : null}
+
+            <div className={styles.adminsModalToolbar}>
+              <button
+                className={styles.mapAction}
+                disabled={adminsModalLoading}
+                onClick={() => {
+                  startCreateAdminAccount();
+                }}
+                type="button"
+              >
+                Nuovo account
+              </button>
+              <button
+                className={styles.ghostButton}
+                disabled={adminsModalLoading}
+                onClick={() => {
+                  void loadAdminAccountsForModal();
+                }}
+                type="button"
+              >
+                Ricarica lista
+              </button>
+            </div>
+
+            <div className={styles.adminsModalTableWrap}>
+              {adminsModalLoading && adminAccountRows.length === 0 ? (
+                <div className={styles.emptyState}>Caricamento…</div>
+              ) : adminAccountRows.length === 0 ? (
+                <div className={styles.emptyState}>Nessun account in tabella admins.</div>
+              ) : (
+                <table className={styles.registryTable}>
+                  <thead>
+                    <tr>
+                      <th>Login</th>
+                      <th>Nome</th>
+                      <th>Ruolo</th>
+                      <th>Abilitato</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminAccountRows.map((row) => (
+                      <tr key={row.id}>
+                        <td>{row.admin_code}</td>
+                        <td>{row.admin_name}</td>
+                        <td>{row.role}</td>
+                        <td>{row.is_enabled ? "Sì" : "No"}</td>
+                        <td>
+                          <button
+                            className={styles.ghostButton}
+                            disabled={adminsModalLoading}
+                            onClick={() => {
+                              startEditAdminAccount(row);
+                            }}
+                            type="button"
+                          >
+                            Modifica
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {adminsFormMode !== "idle" ? (
+              <div className={styles.adminsModalForm}>
+                <h3>{adminsFormMode === "create" ? "Nuovo" : "Modifica"} account</h3>
+                <div className={styles.formGrid}>
+                  <div className={styles.fieldGroup}>
+                    <label htmlFor="admins-form-code">Login (admin_code)</label>
+                    <input
+                      id="admins-form-code"
+                      autoComplete="off"
+                      disabled={adminsModalLoading}
+                      onChange={(event) =>
+                        setAdminsFormCode(event.target.value.trim().toLowerCase())
+                      }
+                      value={adminsFormCode}
+                    />
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <label htmlFor="admins-form-name">Nome</label>
+                    <input
+                      id="admins-form-name"
+                      disabled={adminsModalLoading}
+                      onChange={(event) => setAdminsFormName(event.target.value)}
+                      value={adminsFormName}
+                    />
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <label htmlFor="admins-form-role">Ruolo</label>
+                    <select
+                      id="admins-form-role"
+                      disabled={adminsModalLoading}
+                      onChange={(event) =>
+                        setAdminsFormRole(
+                          event.target.value === "viewer" ? "viewer" : "admin",
+                        )
+                      }
+                      value={adminsFormRole}
+                    >
+                      <option value="admin">admin</option>
+                      <option value="viewer">viewer</option>
+                    </select>
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <label className={styles.inlineToggleRow} htmlFor="admins-form-enabled">
+                      <input
+                        checked={adminsFormEnabled}
+                        disabled={adminsModalLoading}
+                        id="admins-form-enabled"
+                        onChange={(event) =>
+                          setAdminsFormEnabled(event.target.checked)
+                        }
+                        type="checkbox"
+                      />
+                      Account abilitato
+                    </label>
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <label htmlFor="admins-form-pin">
+                      Password
+                      {adminsFormMode === "edit"
+                        ? " (vuoto = non cambiare)"
+                        : " (obbligatoria)"}
+                    </label>
+                    <input
+                      id="admins-form-pin"
+                      autoComplete="new-password"
+                      disabled={adminsModalLoading}
+                      onChange={(event) => setAdminsFormPin(event.target.value)}
+                      type="password"
+                      value={adminsFormPin}
+                    />
+                  </div>
+                </div>
+                <div className={styles.adminsModalFormActions}>
+                  <button
+                    className={styles.mapAction}
+                    disabled={
+                      adminsModalLoading ||
+                      !adminsFormCode.trim() ||
+                      !adminsFormName.trim() ||
+                      (adminsFormMode === "create" && !adminsFormPin.trim())
+                    }
+                    onClick={() => {
+                      void submitAdminsForm();
+                    }}
+                    type="button"
+                  >
+                    Salva
+                  </button>
+                  <button
+                    className={styles.ghostButton}
+                    disabled={adminsModalLoading}
+                    onClick={() => {
+                      resetAdminsForm();
+                    }}
+                    type="button"
+                  >
+                    Annulla modulo
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

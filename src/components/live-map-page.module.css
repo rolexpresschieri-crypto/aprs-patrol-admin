@@ -101,6 +101,13 @@
   border: 1px solid rgba(33, 132, 255, 0.35);
 }
 
+/* Admin: quando sei amministratore, stacca visivamente dalle voci placeholder grigie */
+.navItemAdminAvailable {
+  color: #e8eeff;
+  border: 1px solid rgba(224, 190, 58, 0.28);
+  background: rgba(224, 190, 58, 0.06);
+}
+
 .navItem:disabled {
   opacity: 0.56;
   cursor: default;
@@ -1245,4 +1252,110 @@
   .headerActions {
     justify-content: flex-start;
   }
+}
+
+.adminsModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px 24px;
+  background: rgba(4, 8, 18, 0.72);
+  backdrop-filter: blur(6px);
+  overflow-y: auto;
+}
+
+.adminsModalCard {
+  width: min(920px, 100%);
+  border-radius: 16px;
+  border: 1px solid #2b4278;
+  background: linear-gradient(180deg, #0a1224 0%, #06080f 100%);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  padding: 22px 22px 26px;
+  color: #edf2ff;
+}
+
+.adminsModalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.adminsModalHeader h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.adminsModalSub {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #98a5c5;
+  line-height: 1.45;
+}
+
+.adminsModalClose {
+  flex-shrink: 0;
+  border-radius: 10px;
+  border: 1px solid #2b4278;
+  background: #0c1528;
+  color: #dbe5ff;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.adminsModalClose:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.adminsModalError {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #8b2942;
+  background: rgba(139, 41, 66, 0.2);
+  color: #ffb4c6;
+  font-size: 13px;
+}
+
+.adminsModalToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.adminsModalTableWrap {
+  max-height: min(320px, 40vh);
+  overflow: auto;
+  margin-bottom: 16px;
+  border-radius: 12px;
+  border: 1px solid #1f335f;
+}
+
+.adminsModalForm {
+  border-top: 1px solid #1f335f;
+  padding-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.adminsModalForm h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.adminsModalFormActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
 }
