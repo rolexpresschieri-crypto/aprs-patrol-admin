@@ -180,7 +180,7 @@ export function LiveMapPage() {
   const [adminsFormRole, setAdminsFormRole] = useState<"admin" | "viewer">("admin");
   const [adminsFormEnabled, setAdminsFormEnabled] = useState(true);
 
-  const [waypoints, setWaypoints] = useState<TacticalWaypoint[]>(mockWaypoints);
+  const [waypoints, setWaypoints] = useState<TacticalWaypoint[]>([]);
   const [exerciseOptions, setExerciseOptions] = useState<ExerciseOption[]>([]);
   const [waypointExerciseId, setWaypointExerciseId] = useState("");
   const [waypointLabel, setWaypointLabel] = useState("");
@@ -202,28 +202,37 @@ export function LiveMapPage() {
     const mainEl =
       mainScrollRef.current ??
       (panel?.closest("main") as HTMLElement | null | undefined);
-    if (!panel || !mainEl) {
+    if (!panel) {
       return;
     }
 
-    const gapSide = 8;
-    const gapMain = 12;
-
     if (side) {
-      const d =
-        panel.getBoundingClientRect().top -
-        side.getBoundingClientRect().top -
-        gapSide;
-      side.scrollTop += d;
+      side.scrollTop = 0;
     }
 
-    const dy =
-      panel.getBoundingClientRect().top -
-      mainEl.getBoundingClientRect().top -
-      gapMain;
-    mainEl.scrollTop += dy;
+    panel.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+      inline: "nearest",
+    });
 
-    panel.focus({ preventScroll: true });
+    requestAnimationFrame(() => {
+      if (!mainEl) {
+        return;
+      }
+      const gap = 10;
+      const dy =
+        panel.getBoundingClientRect().top -
+        mainEl.getBoundingClientRect().top -
+        gap;
+      if (Math.abs(dy) > 6) {
+        mainEl.scrollBy({ top: dy, behavior: "smooth" });
+      }
+    });
+
+    window.setTimeout(() => {
+      panel.focus({ preventScroll: true });
+    }, 400);
   }, []);
 
   const isViewer = session?.role === "viewer";
@@ -2148,11 +2157,16 @@ export function LiveMapPage() {
             >
               {loading ? "Aggiornamento..." : "Ricarica dati"}
             </button>
+            {adminView === "live-map" && lastRefreshAt ? (
+              <span className={styles.refreshMeta} title="Ultimo caricamento dati da Supabase">
+                {formatFixTimestamp(lastRefreshAt)}
+              </span>
+            ) : null}
           </div>
         </section>
 
         {adminView === "live-map" && (
-        <section className={styles.toolbar}>
+        <section className={`${styles.toolbar} ${styles.toolbarLive}`}>
           <div className={styles.toolbarCard}>
             <label htmlFor="layer-mode">Layer</label>
             <select
@@ -2220,25 +2234,9 @@ export function LiveMapPage() {
             >
               Vai al pannello waypoint
             </button>
-            <p
-              style={{
-                margin: "8px 0 0",
-                fontSize: 12,
-                color: "#98a5c5",
-                fontWeight: 600,
-                lineHeight: 1.45,
-              }}
-            >
-              Sulla mappa: triangoli gialli = waypoint; scala metrica in{" "}
-              <strong>basso a sinistra</strong>.
+            <p className={styles.toolbarHint}>
+              ▲ gialli sulla mappa · scala in basso a sinistra.
             </p>
-          </div>
-
-          <div className={styles.toolbarCard}>
-            <label>Ultimo refresh</label>
-            <div className={styles.messageBox}>
-              {lastRefreshAt ? formatFixTimestamp(lastRefreshAt) : "In attesa"}
-            </div>
           </div>
         </section>
         )}

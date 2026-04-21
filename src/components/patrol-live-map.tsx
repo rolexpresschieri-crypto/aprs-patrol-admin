@@ -309,6 +309,7 @@ export default function PatrolLiveMap({
           key={waypoint.id}
           position={[waypoint.latitude, waypoint.longitude]}
           icon={waypointIcon}
+          zIndexOffset={800}
         >
           <Popup minWidth={260}>
             <div

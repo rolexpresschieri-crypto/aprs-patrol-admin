@@ -54,6 +54,7 @@
 .tactical-waypoint-divicon {
   background: transparent !important;
   border: none !important;
+  z-index: 800 !important;
 }
 
 .tactical-waypoint-glyph {
