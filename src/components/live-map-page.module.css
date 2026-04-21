@@ -116,6 +116,16 @@
   scroll-margin-top: 12px;
 }
 
+.waypointPanelCard .panelHeaderTitle .waypointPanelTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #eef3ff;
+  line-height: 1.25;
+  -webkit-font-smoothing: antialiased;
+}
+
 .waypointPanelHeaderDesc {
   margin: 0;
   color: #fff100;
@@ -142,7 +152,21 @@
   overflow-x: hidden;
   overflow-y: auto;
   padding-right: 4px;
+  scroll-padding-top: 16px;
+  scroll-padding-bottom: 24px;
   -webkit-overflow-scrolling: touch;
+}
+
+.waypointPanelCard .panelHeader {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+}
+
+.waypointPanelCard .registryForm .fieldGroup input,
+.waypointPanelCard .registryForm .fieldGroup select {
+  scroll-margin-top: 12px;
+  scroll-margin-bottom: 8px;
 }
 
 .sidebar {

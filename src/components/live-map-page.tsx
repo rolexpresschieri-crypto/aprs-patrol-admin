@@ -959,8 +959,15 @@ export function LiveMapPage() {
       return;
     }
 
-    const lat = Number(waypointLat.replace(",", "."));
-    const lon = Number(waypointLon.replace(",", "."));
+    const latTrim = waypointLat.trim();
+    const lonTrim = waypointLon.trim();
+    if (!latTrim || !lonTrim) {
+      setWaypointFormError("Inserisci latitudine e longitudine.");
+      return;
+    }
+
+    const lat = Number(latTrim.replace(",", "."));
+    const lon = Number(lonTrim.replace(",", "."));
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
       setWaypointFormError("Latitudine e longitudine devono essere numeri validi.");
       return;
@@ -2448,7 +2455,7 @@ export function LiveMapPage() {
             >
               <div className={styles.panelHeader}>
                 <div className={styles.panelHeaderTitle}>
-                  <h2>Waypoint tattici</h2>
+                  <h2 className={styles.waypointPanelTitle}>Waypoint tattici</h2>
                   <p className={styles.waypointPanelHeaderDesc}>
                     Stesso database dell&apos;app TOC (
                     <code>tactical_map_points</code>): lettura realtime; creazione /
@@ -2480,7 +2487,7 @@ export function LiveMapPage() {
                 ) : null}
 
                 {canEdit && supabase && exerciseOptions.length > 0 ? (
-                  <form onSubmit={handleWaypointSubmit}>
+                  <form noValidate onSubmit={handleWaypointSubmit}>
                     <div className={styles.fieldGroup}>
                       <label htmlFor="wp-exercise">Esercitazione</label>
                       <select
@@ -2516,7 +2523,6 @@ export function LiveMapPage() {
                           placeholder="45.0703"
                           value={waypointLat}
                           onChange={(event) => setWaypointLat(event.target.value)}
-                          required
                         />
                       </div>
                       <div className={styles.fieldGroup}>
@@ -2527,7 +2533,6 @@ export function LiveMapPage() {
                           placeholder="7.6869"
                           value={waypointLon}
                           onChange={(event) => setWaypointLon(event.target.value)}
-                          required
                         />
                       </div>
                     </div>
