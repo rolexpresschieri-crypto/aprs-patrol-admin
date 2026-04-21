@@ -54,8 +54,22 @@ function MapViewportController({
   onFocusHandled: () => void;
 }) {
   const map = useMap();
-  const initializedRef = useRef(false);
   const lastFocusedSignatureRef = useRef<string | null>(null);
+  const lastBoundsSignatureRef = useRef<string | null>(null);
+
+  /** When set of patrols with fix / waypoints changes, refit bounds (not on every GPS tick). */
+  const boundsSignature = useMemo(() => {
+    const patrolPart = patrols
+      .filter(hasCoordinates)
+      .map((p) => p.sessionId)
+      .sort()
+      .join("|");
+    const wpPart = waypoints
+      .map((w) => w.id)
+      .sort()
+      .join("|");
+    return `${patrolPart}#${wpPart}`;
+  }, [patrols, waypoints]);
 
   useEffect(() => {
     const focusedSignature =
@@ -81,9 +95,10 @@ function MapViewportController({
       return;
     }
 
-    if (initializedRef.current) {
+    if (boundsSignature === lastBoundsSignatureRef.current) {
       return;
     }
+    lastBoundsSignatureRef.current = boundsSignature;
 
     const patrolPoints = patrols
       .filter(hasCoordinates)
@@ -97,19 +112,23 @@ function MapViewportController({
 
     if (points.length === 0) {
       map.setView(defaultCenter, 12);
-      initializedRef.current = true;
       return;
     }
 
     if (points.length === 1) {
       map.setView(points[0], 14);
-      initializedRef.current = true;
       return;
     }
 
     map.fitBounds(points, { padding: [40, 40] });
-    initializedRef.current = true;
-  }, [focusedPatrol, map, onFocusHandled, patrols, waypoints]);
+  }, [
+    boundsSignature,
+    focusedPatrol,
+    map,
+    onFocusHandled,
+    patrols,
+    waypoints,
+  ]);
 
   return null;
 }

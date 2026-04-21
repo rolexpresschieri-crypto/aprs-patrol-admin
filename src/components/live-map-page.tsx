@@ -476,6 +476,7 @@ export function LiveMapPage() {
           setWaypointFeedError(
             `Lettura waypoint non riuscita: ${wpRes.error.message}. Verifica tabella e policy RLS su tactical_map_points.`,
           );
+          setWaypoints([]);
         }
       }
 
