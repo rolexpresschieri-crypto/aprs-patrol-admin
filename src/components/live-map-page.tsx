@@ -206,33 +206,34 @@ export function LiveMapPage() {
       return;
     }
 
-    if (side) {
-      side.scrollTop = 0;
-    }
+    const pad = 10;
 
-    panel.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-      inline: "nearest",
-    });
+    if (side) {
+      const sideRect = side.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const nextTop =
+        panelRect.top - sideRect.top + side.scrollTop - pad;
+      side.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
+    } else {
+      panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
 
     requestAnimationFrame(() => {
       if (!mainEl) {
         return;
       }
-      const gap = 10;
       const dy =
         panel.getBoundingClientRect().top -
         mainEl.getBoundingClientRect().top -
-        gap;
-      if (Math.abs(dy) > 6) {
+        pad;
+      if (Math.abs(dy) > 8) {
         mainEl.scrollBy({ top: dy, behavior: "smooth" });
       }
     });
 
     window.setTimeout(() => {
       panel.focus({ preventScroll: true });
-    }, 400);
+    }, 450);
   }, []);
 
   const isViewer = session?.role === "viewer";
@@ -2433,7 +2434,7 @@ export function LiveMapPage() {
 
             <section
               ref={waypointPanelRef}
-              className={`${styles.panelCard} ${styles.waypointPanelAnchor}`}
+              className={`${styles.panelCard} ${styles.waypointPanelCard} ${styles.waypointPanelAnchor}`}
               id="waypoint-tactical-panel"
               style={{ order: -1 }}
               tabIndex={-1}
@@ -2449,6 +2450,7 @@ export function LiveMapPage() {
                 </div>
               </div>
 
+              <div className={styles.waypointPanelBody}>
               <div className={styles.registryForm}>
                 <div className={styles.messageBox}>
                   {waypoints.length} waypoint in elenco · Ultima fonte:
@@ -2625,6 +2627,7 @@ export function LiveMapPage() {
                     ))
                   )}
                 </div>
+              </div>
               </div>
             </section>
 

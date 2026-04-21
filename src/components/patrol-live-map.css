@@ -4,6 +4,18 @@
   height: 100% !important;
 }
 
+.tactical-waypoint-pin-wrap {
+  background: transparent !important;
+  border: none !important;
+}
+
+.tactical-waypoint-pin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
 /* Scala: in basso a sinistra così non si sovrappone all’attribuzione OSM (destra). */
 .patrol-tactical-map.leaflet-container .leaflet-control-scale {
   margin-bottom: 12px;
@@ -60,13 +72,30 @@
 .tactical-waypoint-glyph {
   font-size: 26px;
   line-height: 1;
-  color: #e0be3a;
+  color: #d91f2a;
   text-shadow:
     -1.5px -1.5px 0 #1a1a1a,
     1.5px -1.5px 0 #1a1a1a,
     -1.5px 1.5px 0 #1a1a1a,
     1.5px 1.5px 0 #1a1a1a,
     0 0 6px rgba(0, 0, 0, 0.7);
-  filter: drop-shadow(0 1px 0 #d91f2a);
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.6));
   transform: translateY(2px);
+}
+
+.tactical-waypoint-caption {
+  display: block;
+  max-width: 84px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+  color: #ffffff;
+  text-shadow:
+    -1px -1px 0 #1a1a1a,
+    1px -1px 0 #1a1a1a,
+    -1px 1px 0 #1a1a1a,
+    1px 1px 0 #1a1a1a,
+    0 0 5px rgba(0, 0, 0, 0.85);
+  word-break: break-word;
 }

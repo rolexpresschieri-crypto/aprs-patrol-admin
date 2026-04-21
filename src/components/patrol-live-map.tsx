@@ -28,6 +28,25 @@ import {
 
 const defaultCenter: LatLngExpression = [45.0703, 7.6869];
 
+function escapeHtmlIcon(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function waypointDivIconFromLabel(label: string | null): L.DivIcon {
+  const cap = escapeHtmlIcon((label?.trim() || "WP").slice(0, 28));
+  return L.divIcon({
+    className: "tactical-waypoint-divicon tactical-waypoint-pin-wrap",
+    html: `<div class="tactical-waypoint-pin"><span class="tactical-waypoint-glyph" aria-hidden="true">▲</span><span class="tactical-waypoint-caption">${cap}</span></div>`,
+    iconSize: [88, 62],
+    iconAnchor: [44, 62],
+    popupAnchor: [0, -54],
+  });
+}
+
 type PatrolLiveMapProps = {
   layerMode: LayerMode;
   patrols: LivePatrol[];
@@ -172,6 +191,102 @@ function LeafletInvalidateOnLayout() {
   return null;
 }
 
+function TacticalWpMarker({
+  waypoint,
+  canManageWaypoints,
+  onDeleteWaypoint,
+  onEditWaypoint,
+}: {
+  waypoint: TacticalWaypoint;
+  canManageWaypoints: boolean;
+  onDeleteWaypoint?: (w: TacticalWaypoint) => void;
+  onEditWaypoint?: (w: TacticalWaypoint) => void;
+}) {
+  const icon = useMemo(
+    () => waypointDivIconFromLabel(waypoint.label),
+    [waypoint.id, waypoint.label],
+  );
+
+  return (
+    <Marker
+      icon={icon}
+      position={[waypoint.latitude, waypoint.longitude]}
+      zIndexOffset={800}
+    >
+      <Popup minWidth={260}>
+        <div
+          style={{
+            display: "grid",
+            gap: 8,
+            minWidth: 220,
+            color: "#111827",
+          }}
+        >
+          <div>
+            <strong>
+              {waypoint.label?.trim() ? waypoint.label : "Waypoint"}
+            </strong>
+          </div>
+          <div>
+            Coordinate: {waypoint.latitude.toFixed(5)},{" "}
+            {waypoint.longitude.toFixed(5)}
+          </div>
+          {waypoint.altitudeM !== null ? (
+            <div>Quota: {waypoint.altitudeM.toFixed(0)} m</div>
+          ) : null}
+          <div>
+            Origine: {tacticalWaypointSourceLabel(waypoint.source)}
+          </div>
+          <div>
+            Creato: {formatWaypointTimestamp(waypoint.createdAt)}
+            {waypoint.createdByAdminCode ? (
+              <span> ({waypoint.createdByAdminCode})</span>
+            ) : null}
+          </div>
+          {canManageWaypoints && (onDeleteWaypoint || onEditWaypoint) ? (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {onEditWaypoint ? (
+                <button
+                  type="button"
+                  onClick={() => onEditWaypoint(waypoint)}
+                  style={{
+                    border: 0,
+                    borderRadius: 10,
+                    padding: "8px 10px",
+                    background: "#1171b7",
+                    color: "#ffffff",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                  }}
+                >
+                  Modifica
+                </button>
+              ) : null}
+              {onDeleteWaypoint ? (
+                <button
+                  type="button"
+                  onClick={() => onDeleteWaypoint(waypoint)}
+                  style={{
+                    border: 0,
+                    borderRadius: 10,
+                    padding: "8px 10px",
+                    background: "#d91f2a",
+                    color: "#ffffff",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                  }}
+                >
+                  Elimina
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </Popup>
+    </Marker>
+  );
+}
+
 export default function PatrolLiveMap({
   layerMode,
   patrols,
@@ -194,18 +309,6 @@ export default function PatrolLiveMap({
     layerMode === "orthophoto"
       ? "&copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community"
       : "&copy; OpenStreetMap contributors";
-
-  const waypointIcon = useMemo(
-    () =>
-      L.divIcon({
-        className: "tactical-waypoint-divicon",
-        html: '<div class="tactical-waypoint-glyph" aria-hidden="true">▲</div>',
-        iconSize: [30, 30],
-        iconAnchor: [15, 26],
-        popupAnchor: [0, -22],
-      }),
-    [],
-  );
 
   return (
     <MapContainer
@@ -305,86 +408,13 @@ export default function PatrolLiveMap({
       })}
 
       {waypoints.map((waypoint) => (
-        <Marker
+        <TacticalWpMarker
           key={waypoint.id}
-          position={[waypoint.latitude, waypoint.longitude]}
-          icon={waypointIcon}
-          zIndexOffset={800}
-        >
-          <Popup minWidth={260}>
-            <div
-              style={{
-                display: "grid",
-                gap: 8,
-                minWidth: 220,
-                color: "#111827",
-              }}
-            >
-              <div>
-                <strong>
-                  {waypoint.label?.trim() ? waypoint.label : "Waypoint"}
-                </strong>
-              </div>
-              <div>
-                Coordinate: {waypoint.latitude.toFixed(5)},{" "}
-                {waypoint.longitude.toFixed(5)}
-              </div>
-              {waypoint.altitudeM !== null ? (
-                <div>Quota: {waypoint.altitudeM.toFixed(0)} m</div>
-              ) : null}
-              <div>
-                Origine: {tacticalWaypointSourceLabel(waypoint.source)}
-              </div>
-              <div>
-                Creato: {formatWaypointTimestamp(waypoint.createdAt)}
-                {waypoint.createdByAdminCode ? (
-                  <span>
-                    {" "}
-                    ({waypoint.createdByAdminCode})
-                  </span>
-                ) : null}
-              </div>
-              {(canManageWaypoints && (onDeleteWaypoint || onEditWaypoint)) ? (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {onEditWaypoint ? (
-                    <button
-                      type="button"
-                      onClick={() => onEditWaypoint(waypoint)}
-                      style={{
-                        border: 0,
-                        borderRadius: 10,
-                        padding: "8px 10px",
-                        background: "#1171b7",
-                        color: "#ffffff",
-                        cursor: "pointer",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Modifica
-                    </button>
-                  ) : null}
-                  {onDeleteWaypoint ? (
-                    <button
-                      type="button"
-                      onClick={() => onDeleteWaypoint(waypoint)}
-                      style={{
-                        border: 0,
-                        borderRadius: 10,
-                        padding: "8px 10px",
-                        background: "#d91f2a",
-                        color: "#ffffff",
-                        cursor: "pointer",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Elimina
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          </Popup>
-        </Marker>
+          canManageWaypoints={canManageWaypoints}
+          onDeleteWaypoint={onDeleteWaypoint}
+          onEditWaypoint={onEditWaypoint}
+          waypoint={waypoint}
+        />
       ))}
     </MapContainer>
   );
