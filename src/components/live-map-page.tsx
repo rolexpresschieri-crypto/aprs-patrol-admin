@@ -598,11 +598,11 @@ export function LiveMapPage() {
   }, [supabase]);
 
   useEffect(() => {
-    if (!session) {
+    if (!authChecked || !session) {
       return;
     }
     void loadData();
-  }, [loadData, session]);
+  }, [authChecked, loadData, session, supabase]);
 
   useEffect(() => {
     if (exerciseOptions.length === 0) {
@@ -620,7 +620,7 @@ export function LiveMapPage() {
   }, [exerciseOptions]);
 
   useEffect(() => {
-    if (!supabase || !session) {
+    if (!authChecked || !supabase || !session) {
       return;
     }
 
@@ -642,10 +642,10 @@ export function LiveMapPage() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [refreshWaypointsOnly, session, supabase]);
+  }, [authChecked, refreshWaypointsOnly, session, supabase]);
 
   useEffect(() => {
-    if (!session) {
+    if (!authChecked || !session) {
       return;
     }
 
@@ -654,7 +654,7 @@ export function LiveMapPage() {
     }, 20000);
 
     return () => window.clearInterval(timer);
-  }, [loadData, session]);
+  }, [authChecked, loadData, session]);
 
   const filteredPatrols = useMemo(() => {
     return patrols.filter((patrol) => {
@@ -1565,7 +1565,7 @@ export function LiveMapPage() {
       );
       setSession(nextSession);
       setLoginError(null);
-      await loadData();
+      setMessage("Modalità locale senza Supabase: dati demo per la sola interfaccia.");
       return;
     }
 
@@ -1614,7 +1614,6 @@ export function LiveMapPage() {
           ? "Accesso viewer eseguito: sola consultazione."
           : "Accesso admin eseguito: gestione completa disponibile.",
       );
-      await loadData();
     } catch (error) {
       const errorText =
         error instanceof Error ? error.message : "Errore sconosciuto.";
