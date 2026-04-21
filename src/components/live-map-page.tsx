@@ -1977,9 +1977,11 @@ export function LiveMapPage() {
       <div className={styles.mainColumn}>
       <main
         className={
-          adminView === "live-sessions"
-            ? `${styles.content} ${styles.fullHeightContent}`
-            : styles.content
+          adminView === "live-map"
+            ? `${styles.content} ${styles.liveMapContent}`
+            : adminView === "live-sessions"
+              ? `${styles.content} ${styles.fullHeightContent}`
+              : styles.content
         }
       >
         <section className={styles.header}>
@@ -2086,11 +2088,11 @@ export function LiveMapPage() {
             <button
               className={styles.mapAction}
               type="button"
-              onClick={() =>
+              onClick={() => {
                 document
                   .getElementById("waypoint-tactical-panel")
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
-              }
+                  ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+              }}
             >
               Vai al pannello waypoint
             </button>
@@ -2118,8 +2120,8 @@ export function LiveMapPage() {
         )}
 
         {adminView === "live-map" ? (
-        <section className={styles.mainGrid}>
-          <article className={styles.mapCard}>
+        <section className={`${styles.mainGrid} ${styles.mapMainGrid}`}>
+          <article className={`${styles.mapCard} ${styles.mapCardLive}`}>
             <div className={styles.mapHeader}>
               <div className={styles.mapHeaderTitle}>
                 <h2>Operational Map</h2>
@@ -2305,7 +2307,7 @@ export function LiveMapPage() {
             </section>
 
             <section
-              className={styles.panelCard}
+              className={`${styles.panelCard} ${styles.waypointPanelAnchor}`}
               id="waypoint-tactical-panel"
               style={{ order: -1 }}
             >

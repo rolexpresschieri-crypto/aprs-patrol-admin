@@ -1,3 +1,8 @@
+/* Altezza minima: evita mappa “a striscia” se il contenitore flex non risolve l’altezza. */
+.patrol-tactical-map.leaflet-container {
+  min-height: 260px;
+}
+
 /* Scala: in basso a sinistra così non si sovrappone all’attribuzione OSM (destra). */
 .patrol-tactical-map.leaflet-container .leaflet-control-scale {
   margin-bottom: 12px;
