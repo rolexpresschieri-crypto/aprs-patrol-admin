@@ -65,17 +65,23 @@
   align-items: stretch;
 }
 
+/* Una riga griglia con altezza minima → mappa + colonna destra non collassano a zero (pannelli “vuoti”). */
+.mainGrid.mapMainGrid {
+  grid-template-rows: minmax(min(440px, 56vh), auto);
+}
+
 .mapCardLive {
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  min-height: min(480px, 60vh);
   overflow: hidden;
 }
 
 .mapCardLive .mapStage {
   flex: 1 1 auto;
-  min-height: min(58vh, 720px);
-  height: auto;
+  /* Altezza esplicita: Leaflet legge il box al primo paint (prima era ~0 → striscia). */
+  min-height: clamp(300px, 52vh, 780px);
+  height: clamp(320px, 52vh, 780px);
 }
 
 .waypointPanelAnchor {
@@ -472,6 +478,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   align-items: stretch;
+  align-self: stretch;
   padding-right: 4px;
   -webkit-overflow-scrolling: touch;
 }
@@ -1298,7 +1305,12 @@
   }
 
   .mapCardLive .mapStage {
-    min-height: min(48vh, 560px);
+    min-height: clamp(260px, 44vh, 620px);
+    height: clamp(280px, 44vh, 620px);
+  }
+
+  .mapCardLive {
+    min-height: min(400px, 50vh);
   }
 
   .sidePanels {

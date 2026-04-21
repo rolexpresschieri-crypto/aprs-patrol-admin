@@ -133,6 +133,45 @@ function MapViewportController({
   return null;
 }
 
+/** Leaflet misura il contenitore al mount: se l’altezza flex non è ancora stabile → striscia; il click forza reflow. */
+function LeafletInvalidateOnLayout() {
+  const map = useMap();
+
+  useEffect(() => {
+    const el = map.getContainer();
+
+    const invalidate = () => {
+      map.invalidateSize({ animate: false });
+    };
+
+    invalidate();
+    const raf1 = requestAnimationFrame(() => {
+      invalidate();
+      requestAnimationFrame(invalidate);
+    });
+
+    const timeouts = [40, 120, 350, 800].map((ms) =>
+      window.setTimeout(invalidate, ms),
+    );
+
+    const ro = new ResizeObserver(() => invalidate());
+    ro.observe(el);
+    let node: HTMLElement | null = el;
+    for (let i = 0; i < 4 && node; i++) {
+      ro.observe(node);
+      node = node.parentElement;
+    }
+
+    return () => {
+      cancelAnimationFrame(raf1);
+      timeouts.forEach(clearTimeout);
+      ro.disconnect();
+    };
+  }, [map]);
+
+  return null;
+}
+
 export default function PatrolLiveMap({
   layerMode,
   patrols,
@@ -184,6 +223,7 @@ export default function PatrolLiveMap({
         focusedPatrol={focusedPatrol}
         onFocusHandled={onFocusHandled}
       />
+      <LeafletInvalidateOnLayout />
 
       {patrols.filter(hasCoordinates).map((patrol) => {
         const selected = patrol.sessionId === selectedSessionId;
