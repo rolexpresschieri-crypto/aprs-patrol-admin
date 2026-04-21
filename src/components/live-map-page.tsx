@@ -8,6 +8,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -165,6 +166,29 @@ export function LiveMapPage() {
   const [waypointBusy, setWaypointBusy] = useState(false);
   const [waypointFormError, setWaypointFormError] = useState<string | null>(null);
   const [waypointFeedError, setWaypointFeedError] = useState<string | null>(null);
+
+  const waypointPanelRef = useRef<HTMLElement | null>(null);
+  const sidePanelsScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollToWaypointPanel = useCallback(() => {
+    const panel = waypointPanelRef.current;
+    const side = sidePanelsScrollRef.current;
+    if (!panel) {
+      return;
+    }
+
+    if (side) {
+      const delta =
+        panel.getBoundingClientRect().top - side.getBoundingClientRect().top;
+      side.scrollBy({ top: delta, behavior: "smooth" });
+    }
+
+    panel.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+      inline: "nearest",
+    });
+  }, []);
 
   const isViewer = session?.role === "viewer";
   const canEdit = session?.role === "admin";
@@ -2089,11 +2113,7 @@ export function LiveMapPage() {
             <button
               className={styles.mapAction}
               type="button"
-              onClick={() => {
-                document
-                  .getElementById("waypoint-tactical-panel")
-                  ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-              }}
+              onClick={scrollToWaypointPanel}
             >
               Vai al pannello waypoint
             </button>
@@ -2177,7 +2197,10 @@ export function LiveMapPage() {
             </div>
           </article>
 
-          <div className={styles.sidePanels}>
+          <div
+            ref={sidePanelsScrollRef}
+            className={styles.sidePanels}
+          >
             <section className={styles.panelCard}>
               <div className={styles.panelHeader}>
                 <div className={styles.panelHeaderTitle}>
@@ -2308,9 +2331,11 @@ export function LiveMapPage() {
             </section>
 
             <section
+              ref={waypointPanelRef}
               className={`${styles.panelCard} ${styles.waypointPanelAnchor}`}
               id="waypoint-tactical-panel"
               style={{ order: -1 }}
+              tabIndex={-1}
             >
               <div className={styles.panelHeader}>
                 <div className={styles.panelHeaderTitle}>
