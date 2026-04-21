@@ -1978,7 +1978,7 @@ export function LiveMapPage() {
       <main
         className={
           adminView === "live-map"
-            ? `${styles.content} ${styles.liveMapContent}`
+            ? styles.contentLiveMap
             : adminView === "live-sessions"
               ? `${styles.content} ${styles.fullHeightContent}`
               : styles.content
