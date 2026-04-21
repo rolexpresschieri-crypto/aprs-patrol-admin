@@ -56,9 +56,9 @@ function patrolMobileDivIcon(patrol: LivePatrol, selected: boolean): L.DivIcon {
   return L.divIcon({
     className: "mobile-patrol-divicon mobile-patrol-pin-wrap",
     html: `<div class="mobile-patrol-pin"><div class="mobile-patrol-dot${sel}" style="background-color:${fill}"></div><div class="mobile-patrol-chip">${chip}</div></div>`,
-    iconSize: [104, 56],
-    iconAnchor: [52, 22],
-    popupAnchor: [0, -38],
+    iconSize: [96, 44],
+    iconAnchor: [48, 10],
+    popupAnchor: [0, -30],
   });
 }
 
