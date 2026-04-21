@@ -37,13 +37,14 @@ function escapeHtmlIcon(text: string): string {
 
 /** Look app mobile: triangolo rosso + pillola nera bordo rosso, testo bianco maiuscolo. */
 function waypointMobileDivIcon(label: string | null): L.DivIcon {
-  const cap = escapeHtmlIcon((label?.trim() || "WP").slice(0, 22).toUpperCase());
+  const cap = escapeHtmlIcon((label?.trim() || "WP").slice(0, 18).toUpperCase());
   return L.divIcon({
     className: "mobile-wp-divicon mobile-wp-pin-wrap",
     html: `<div class="mobile-wp-pin"><div class="mobile-wp-head" aria-hidden="true"><span class="mobile-wp-bang">!</span></div><div class="mobile-wp-chip">${cap}</div></div>`,
-    iconSize: [112, 58],
-    iconAnchor: [56, 44],
-    popupAnchor: [0, -42],
+    iconSize: [96, 46],
+    /* Vertice superiore del triangolo ≈ punto GEO sulla mappa */
+    iconAnchor: [48, 5],
+    popupAnchor: [0, -28],
   });
 }
 
