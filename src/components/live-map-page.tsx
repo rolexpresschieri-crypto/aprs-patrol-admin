@@ -303,31 +303,36 @@ export function LiveMapPage() {
           .limit(500),
       ]);
 
+      const loadWarnings: string[] = [];
+
       if (patrolResult.error) {
-        throw patrolResult.error;
+        loadWarnings.push(
+          `active_patrol_summaries: ${patrolResult.error.message}`,
+        );
       }
-
       if (missionResult.error) {
-        throw missionResult.error;
+        loadWarnings.push(`missions: ${missionResult.error.message}`);
       }
-
       if (registryResult.error) {
-        throw registryResult.error;
+        loadWarnings.push(`patrols: ${registryResult.error.message}`);
       }
-
       if (accessResult.error) {
-        throw accessResult.error;
+        loadWarnings.push(`admin_access_events: ${accessResult.error.message}`);
       }
-
       if (sessionsResult.error) {
-        throw sessionsResult.error;
+        loadWarnings.push(`patrol_sessions: ${sessionsResult.error.message}`);
       }
-
       if (statusEventsResult.error) {
-        throw statusEventsResult.error;
+        loadWarnings.push(`patrol_status_events: ${statusEventsResult.error.message}`);
       }
 
-      const nextPatrols: LivePatrol[] = (patrolResult.data ?? []).map((row) => ({
+      if (loadWarnings.length > 0) {
+        console.warn("[APRS Patrol Admin] loadData avvisi parziali:", loadWarnings);
+      }
+
+      const nextPatrols: LivePatrol[] = (
+        patrolResult.error ? [] : patrolResult.data ?? []
+      ).map((row) => ({
         sessionId: row.session_id as string,
         exerciseId: row.exercise_id as string,
         patrolId: row.patrol_id as string,
@@ -346,13 +351,15 @@ export function LiveMapPage() {
 
       const nextMissions = Array.from(
         new Set(
-          (missionResult.data ?? [])
+          (missionResult.error ? [] : missionResult.data ?? [])
             .map((row) => row.mission_name as string | null)
             .filter((value): value is string => Boolean(value)),
         ),
       );
 
-      const nextRegistry: PatrolRegistryItem[] = (registryResult.data ?? []).map(
+      const nextRegistry: PatrolRegistryItem[] = (
+        registryResult.error ? [] : registryResult.data ?? []
+      ).map(
         (row) => ({
           id: row.id as string,
           patrolCode: row.patrol_code as string,
@@ -363,7 +370,9 @@ export function LiveMapPage() {
         }),
       );
 
-      const nextAccessEvents: AdminAccessEvent[] = (accessResult.data ?? []).map(
+      const nextAccessEvents: AdminAccessEvent[] = (
+        accessResult.error ? [] : accessResult.data ?? []
+      ).map(
         (row) => ({
           id: row.id as string,
           adminCode: row.admin_code as string,
@@ -384,7 +393,9 @@ export function LiveMapPage() {
         }>
       >();
 
-      for (const row of statusEventsResult.data ?? []) {
+      for (const row of statusEventsResult.error
+        ? []
+        : statusEventsResult.data ?? []) {
         const sessionId = row.session_id as string | null;
         const missionId = (row.mission_id as string | null) ?? null;
         const missionData = row.missions as
@@ -410,7 +421,9 @@ export function LiveMapPage() {
         statusTimelineBySession.set(sessionId, timeline);
       }
 
-      const nextSessionRecords: PatrolSessionRecord[] = (sessionsResult.data ?? []).map(
+      const nextSessionRecords: PatrolSessionRecord[] = (
+        sessionsResult.error ? [] : sessionsResult.data ?? []
+      ).map(
         (row) => {
           const patrolData = row.patrols as
             | { patrol_code?: string; patrol_name?: string }
@@ -549,10 +562,14 @@ export function LiveMapPage() {
       setSessionRecords(nextSessionRecords);
       setExerciseOptions(nextExercises);
       setBackendMode("live");
-      setMessage(
+      const baseLiveMessage =
         nextPatrols.length > 0
           ? "Feed live caricato da Supabase. Marker e lista sono aggiornati dal backend."
-          : "Connessione live attiva, ma al momento non risultano pattuglie online.",
+          : "Connessione live attiva: nessuna pattuglia nel riepilogo operativo.";
+      setMessage(
+        loadWarnings.length > 0
+          ? `${baseLiveMessage} Alcune letture sono fallite (dettaglio in console): ${loadWarnings.join(" · ")}`
+          : baseLiveMessage,
       );
       setLastRefreshAt(new Date().toISOString());
     } catch (error) {
