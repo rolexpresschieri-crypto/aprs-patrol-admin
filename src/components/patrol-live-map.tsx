@@ -5,7 +5,6 @@ import "./patrol-live-map.css";
 import L from "leaflet";
 import { useEffect, useMemo, useRef } from "react";
 import {
-  CircleMarker,
   MapContainer,
   Marker,
   Popup,
@@ -36,14 +35,30 @@ function escapeHtmlIcon(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function waypointDivIconFromLabel(label: string | null): L.DivIcon {
-  const cap = escapeHtmlIcon((label?.trim() || "WP").slice(0, 28));
+/** Look app mobile: triangolo rosso + pillola nera bordo rosso, testo bianco maiuscolo. */
+function waypointMobileDivIcon(label: string | null): L.DivIcon {
+  const cap = escapeHtmlIcon((label?.trim() || "WP").slice(0, 22).toUpperCase());
   return L.divIcon({
-    className: "tactical-waypoint-divicon tactical-waypoint-pin-wrap",
-    html: `<div class="tactical-waypoint-pin"><span class="tactical-waypoint-glyph" aria-hidden="true">▲</span><span class="tactical-waypoint-caption">${cap}</span></div>`,
-    iconSize: [88, 62],
-    iconAnchor: [44, 62],
-    popupAnchor: [0, -54],
+    className: "mobile-wp-divicon mobile-wp-pin-wrap",
+    html: `<div class="mobile-wp-pin"><div class="mobile-wp-head" aria-hidden="true"><span class="mobile-wp-bang">!</span></div><div class="mobile-wp-chip">${cap}</div></div>`,
+    iconSize: [112, 58],
+    iconAnchor: [56, 44],
+    popupAnchor: [0, -42],
+  });
+}
+
+/** Look app mobile: cerchio stato + bordo bianco + pillola nera nome maiuscolo. */
+function patrolMobileDivIcon(patrol: LivePatrol, selected: boolean): L.DivIcon {
+  const fill = getStatusColor(patrol.status);
+  const raw = patrol.patrolName?.trim() || patrol.patrolCode || "?";
+  const chip = escapeHtmlIcon(raw.slice(0, 18).toUpperCase());
+  const sel = selected ? " mobile-patrol-dot--selected" : "";
+  return L.divIcon({
+    className: "mobile-patrol-divicon mobile-patrol-pin-wrap",
+    html: `<div class="mobile-patrol-pin"><div class="mobile-patrol-dot${sel}" style="background-color:${fill}"></div><div class="mobile-patrol-chip">${chip}</div></div>`,
+    iconSize: [104, 56],
+    iconAnchor: [52, 22],
+    popupAnchor: [0, -38],
   });
 }
 
@@ -191,6 +206,98 @@ function LeafletInvalidateOnLayout() {
   return null;
 }
 
+function PatrolMarker({
+  patrol,
+  selected,
+  onSelectPatrol,
+  onForceLogout,
+}: {
+  patrol: LivePatrol;
+  selected: boolean;
+  onSelectPatrol: (patrol: LivePatrol) => void;
+  onForceLogout: (patrol: LivePatrol) => void;
+}) {
+  const icon = useMemo(
+    () => patrolMobileDivIcon(patrol, selected),
+    [
+      patrol.sessionId,
+      patrol.status,
+      patrol.patrolCode,
+      patrol.patrolName,
+      selected,
+    ],
+  );
+
+  return (
+    <Marker
+      eventHandlers={{
+        click: () => onSelectPatrol(patrol),
+      }}
+      icon={icon}
+      position={[patrol.lastLatitude!, patrol.lastLongitude!]}
+      zIndexOffset={selected ? 720 : 620}
+    >
+      <Popup minWidth={250}>
+        <div
+          style={{
+            display: "grid",
+            gap: 8,
+            minWidth: 220,
+            color: "#111827",
+          }}
+        >
+          <div>
+            <strong>
+              {patrol.patrolCode} - {patrol.patrolName}
+            </strong>
+          </div>
+          <div>Missione: {patrol.missionName ?? "Non assegnata"}</div>
+          <div>Stato: {getStatusLabel(patrol.status)}</div>
+          <div>Ultimo fix: {formatFixTimestamp(patrol.lastFixAt)}</div>
+          <div>
+            Accuratezza:{" "}
+            {patrol.lastAccuracy !== null
+              ? `${patrol.lastAccuracy.toFixed(0)} m`
+              : "n/d"}
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              onClick={() => onSelectPatrol(patrol)}
+              style={{
+                border: 0,
+                borderRadius: 10,
+                padding: "8px 10px",
+                background: "#1171b7",
+                color: "#ffffff",
+                cursor: "pointer",
+                fontWeight: 700,
+              }}
+              type="button"
+            >
+              Apri dettaglio
+            </button>
+            <button
+              onClick={() => onForceLogout(patrol)}
+              style={{
+                border: 0,
+                borderRadius: 10,
+                padding: "8px 10px",
+                background: "#d91f2a",
+                color: "#ffffff",
+                cursor: "pointer",
+                fontWeight: 700,
+              }}
+              type="button"
+            >
+              Force logout
+            </button>
+          </div>
+        </div>
+      </Popup>
+    </Marker>
+  );
+}
+
 function TacticalWpMarker({
   waypoint,
   canManageWaypoints,
@@ -203,7 +310,7 @@ function TacticalWpMarker({
   onEditWaypoint?: (w: TacticalWaypoint) => void;
 }) {
   const icon = useMemo(
-    () => waypointDivIconFromLabel(waypoint.label),
+    () => waypointMobileDivIcon(waypoint.label),
     [waypoint.id, waypoint.label],
   );
 
@@ -328,84 +435,15 @@ export default function PatrolLiveMap({
       />
       <LeafletInvalidateOnLayout />
 
-      {patrols.filter(hasCoordinates).map((patrol) => {
-        const selected = patrol.sessionId === selectedSessionId;
-
-        return (
-          <CircleMarker
-            key={patrol.sessionId}
-            center={[patrol.lastLatitude!, patrol.lastLongitude!]}
-            radius={selected ? 11 : 9}
-            pathOptions={{
-              color: selected ? "#ffffff" : getStatusColor(patrol.status),
-              weight: selected ? 3 : 2,
-              fillColor: getStatusColor(patrol.status),
-              fillOpacity: 0.92,
-            }}
-            eventHandlers={{
-              click: () => onSelectPatrol(patrol),
-            }}
-          >
-            <Popup minWidth={250}>
-              <div
-                style={{
-                  display: "grid",
-                  gap: 8,
-                  minWidth: 220,
-                  color: "#111827",
-                }}
-              >
-                <div>
-                  <strong>
-                    {patrol.patrolCode} - {patrol.patrolName}
-                  </strong>
-                </div>
-                <div>Missione: {patrol.missionName ?? "Non assegnata"}</div>
-                <div>Stato: {getStatusLabel(patrol.status)}</div>
-                <div>Ultimo fix: {formatFixTimestamp(patrol.lastFixAt)}</div>
-                <div>
-                  Accuratezza:{" "}
-                  {patrol.lastAccuracy !== null
-                    ? `${patrol.lastAccuracy.toFixed(0)} m`
-                    : "n/d"}
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    onClick={() => onSelectPatrol(patrol)}
-                    style={{
-                      border: 0,
-                      borderRadius: 10,
-                      padding: "8px 10px",
-                      background: "#1171b7",
-                      color: "#ffffff",
-                      cursor: "pointer",
-                      fontWeight: 700,
-                    }}
-                  >
-                    Apri dettaglio
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onForceLogout(patrol)}
-                    style={{
-                      border: 0,
-                      borderRadius: 10,
-                      padding: "8px 10px",
-                      background: "#d91f2a",
-                      color: "#ffffff",
-                      cursor: "pointer",
-                      fontWeight: 700,
-                    }}
-                  >
-                    Force logout
-                  </button>
-                </div>
-              </div>
-            </Popup>
-          </CircleMarker>
-        );
-      })}
+      {patrols.filter(hasCoordinates).map((patrol) => (
+        <PatrolMarker
+          key={patrol.sessionId}
+          patrol={patrol}
+          selected={patrol.sessionId === selectedSessionId}
+          onForceLogout={onForceLogout}
+          onSelectPatrol={onSelectPatrol}
+        />
+      ))}
 
       {waypoints.map((waypoint) => (
         <TacticalWpMarker
