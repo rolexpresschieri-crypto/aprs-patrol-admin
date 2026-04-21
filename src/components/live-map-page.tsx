@@ -276,61 +276,89 @@ export function LiveMapPage() {
     setLoading(true);
 
     try {
-      const [
-        patrolResult,
-        missionResult,
-        registryResult,
-        accessResult,
-        sessionsResult,
-        statusEventsResult,
-      ] = await raceSupabaseBatch(
-        Promise.all([
-        supabase
-          .from("active_patrol_summaries")
-          .select(
-            "session_id, exercise_id, patrol_id, patrol_code, patrol_name, mission_id, mission_name, current_status, last_status_at, is_online, last_latitude, last_longitude, last_accuracy, last_fix_at",
-          )
-          .order("patrol_code", { ascending: true }),
-        supabase
-          .from("missions")
-          .select("mission_name")
-          .eq("is_enabled", true)
-          .order("sort_order", { ascending: true }),
-        supabase
-          .from("patrols")
-          .select("id, patrol_code, patrol_name, pin_hash, is_enabled, created_at")
-          .order("patrol_code", { ascending: true }),
-        supabase
-          .from("admin_access_events")
-          .select("id, admin_code, admin_name, role, event_type, occurred_at")
-          .order("occurred_at", { ascending: false })
-          .limit(100),
-        supabase
-          .from("patrol_sessions")
-          .select(
-            "id, is_online, login_at, logout_at, last_status_at, current_status, patrols!inner(patrol_code, patrol_name), missions(mission_name)",
-          )
-          .order("login_at", { ascending: false })
-          .limit(100),
-        supabase
-          .from("patrol_status_events")
-          .select("session_id, mission_id, status, changed_at, missions(mission_name)")
-          .in("status", [
-            "start_mission",
-            "moving",
-            "target",
-            "operation_start",
-            "operation_end",
-            "standby",
-            "end_mission",
-          ])
-          .order("changed_at", { ascending: true })
-          .limit(500),
-      ]),
-        "Lettura tabelle operatività",
-      );
-
       const loadWarnings: string[] = [];
+
+      let patrolResult;
+      let missionResult;
+      let registryResult;
+
+      try {
+        [patrolResult, missionResult, registryResult] = await raceSupabaseBatch(
+          Promise.all([
+            supabase
+              .from("active_patrol_summaries")
+              .select(
+                "session_id, exercise_id, patrol_id, patrol_code, patrol_name, mission_id, mission_name, current_status, last_status_at, is_online, last_latitude, last_longitude, last_accuracy, last_fix_at",
+              )
+              .order("patrol_code", { ascending: true }),
+            supabase
+              .from("missions")
+              .select("mission_name")
+              .eq("is_enabled", true)
+              .order("sort_order", { ascending: true }),
+            supabase
+              .from("patrols")
+              .select("id, patrol_code, patrol_name, pin_hash, is_enabled, created_at")
+              .order("patrol_code", { ascending: true }),
+          ]),
+          "Riepilogo pattuglie e missioni",
+        );
+      } catch (batchErr) {
+        const msg =
+          batchErr instanceof Error ? batchErr.message : String(batchErr);
+        loadWarnings.push(`Riepilogo pattuglie: ${msg}`);
+        patrolResult = { data: [], error: null };
+        missionResult = { data: [], error: null };
+        registryResult = { data: [], error: null };
+      }
+
+      let accessResult;
+      let sessionsResult;
+      let statusEventsResult;
+
+      try {
+        [accessResult, sessionsResult, statusEventsResult] =
+          await raceSupabaseBatch(
+            Promise.all([
+              supabase
+                .from("admin_access_events")
+                .select("id, admin_code, admin_name, role, event_type, occurred_at")
+                .order("occurred_at", { ascending: false })
+                .limit(100),
+              supabase
+                .from("patrol_sessions")
+                .select(
+                  "id, is_online, login_at, logout_at, last_status_at, current_status, patrols!inner(patrol_code, patrol_name), missions(mission_name)",
+                )
+                .order("login_at", { ascending: false })
+                .limit(100),
+              supabase
+                .from("patrol_status_events")
+                .select(
+                  "session_id, mission_id, status, changed_at, missions(mission_name)",
+                )
+                .in("status", [
+                  "start_mission",
+                  "moving",
+                  "target",
+                  "operation_start",
+                  "operation_end",
+                  "standby",
+                  "end_mission",
+                ])
+                .order("changed_at", { ascending: true })
+                .limit(500),
+            ]),
+            "Storico sessioni ed eventi",
+          );
+      } catch (batchErr) {
+        const msg =
+          batchErr instanceof Error ? batchErr.message : String(batchErr);
+        loadWarnings.push(`Storico sessioni/eventi (saltato): ${msg}`);
+        accessResult = { data: [], error: null };
+        sessionsResult = { data: [], error: null };
+        statusEventsResult = { data: [], error: null };
+      }
 
       if (patrolResult.error) {
         loadWarnings.push(
@@ -532,18 +560,35 @@ export function LiveMapPage() {
         },
       );
 
-      const [wpRes, exRes, activeExerciseRes] = await raceSupabaseBatch(
-        Promise.all([
-          supabase
-            .from("tactical_map_points")
-            .select("*")
-            .order("created_at", { ascending: false })
-            .limit(400),
-          supabase.from("exercises").select("id, title, is_active").order("title"),
-          supabase.from("exercises").select("id, title").eq("is_active", true).maybeSingle(),
-        ]),
-        "Lettura waypoint ed esercitazioni",
-      );
+      let wpRes;
+      let exRes;
+      let activeExerciseRes;
+
+      try {
+        [wpRes, exRes, activeExerciseRes] = await raceSupabaseBatch(
+          Promise.all([
+            supabase
+              .from("tactical_map_points")
+              .select("*")
+              .order("created_at", { ascending: false })
+              .limit(400),
+            supabase.from("exercises").select("id, title, is_active").order("title"),
+            supabase
+              .from("exercises")
+              .select("id, title")
+              .eq("is_active", true)
+              .maybeSingle(),
+          ]),
+          "Lettura waypoint ed esercitazioni",
+        );
+      } catch (batchErr) {
+        const msg =
+          batchErr instanceof Error ? batchErr.message : String(batchErr);
+        loadWarnings.push(`Waypoint/esercitazioni (saltato): ${msg}`);
+        wpRes = { data: [], error: { message: msg } };
+        exRes = { data: [], error: null };
+        activeExerciseRes = { data: null, error: null };
+      }
 
       if (!wpRes.error && wpRes.data) {
         setWaypoints(tacticalWaypointsFromRows(wpRes.data as Record<string, unknown>[]));
