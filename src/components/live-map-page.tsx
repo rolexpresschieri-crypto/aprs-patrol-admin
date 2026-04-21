@@ -87,6 +87,31 @@ type AdminAccountRow = {
   is_enabled: boolean;
 };
 
+const SUPABASE_BATCH_TIMEOUT_MS = 45_000;
+
+/** Evita che `setLoading(true)` resti per sempre se le query PostgREST non rispondono. */
+function raceSupabaseBatch<T>(promise: Promise<T>, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => {
+      reject(
+        new Error(
+          `${label}: nessuna risposta entro ${SUPABASE_BATCH_TIMEOUT_MS / 1000}s (rete, progetto Supabase in pausa o blocco browser).`,
+        ),
+      );
+    }, SUPABASE_BATCH_TIMEOUT_MS);
+    promise.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
 export function LiveMapPage() {
   const [supabase, setSupabase] = useState<ReturnType<
     typeof getSupabaseBrowserClient
@@ -258,8 +283,8 @@ export function LiveMapPage() {
         accessResult,
         sessionsResult,
         statusEventsResult,
-      ] =
-        await Promise.all([
+      ] = await raceSupabaseBatch(
+        Promise.all([
         supabase
           .from("active_patrol_summaries")
           .select(
@@ -301,7 +326,9 @@ export function LiveMapPage() {
           ])
           .order("changed_at", { ascending: true })
           .limit(500),
-      ]);
+      ]),
+        "Lettura tabelle operatività",
+      );
 
       const loadWarnings: string[] = [];
 
@@ -505,15 +532,18 @@ export function LiveMapPage() {
         },
       );
 
-      const [wpRes, exRes, activeExerciseRes] = await Promise.all([
-        supabase
-          .from("tactical_map_points")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(400),
-        supabase.from("exercises").select("id, title, is_active").order("title"),
-        supabase.from("exercises").select("id, title").eq("is_active", true).maybeSingle(),
-      ]);
+      const [wpRes, exRes, activeExerciseRes] = await raceSupabaseBatch(
+        Promise.all([
+          supabase
+            .from("tactical_map_points")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .limit(400),
+          supabase.from("exercises").select("id, title, is_active").order("title"),
+          supabase.from("exercises").select("id, title").eq("is_active", true).maybeSingle(),
+        ]),
+        "Lettura waypoint ed esercitazioni",
+      );
 
       if (!wpRes.error && wpRes.data) {
         setWaypoints(tacticalWaypointsFromRows(wpRes.data as Record<string, unknown>[]));
