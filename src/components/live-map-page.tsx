@@ -9,6 +9,7 @@ import {
   useLayoutEffect,
   useMemo,
   useState,
+  type FormEvent,
 } from "react";
 import {
   ADMIN_SESSION_STORAGE_KEY,
@@ -23,17 +24,23 @@ import {
   formatSessionDuration,
   formatTimelineStepDuration,
   formatTimeOnly,
+  formatWaypointTimestamp,
   getStatusColor,
   getStatusLabel,
   hasCoordinates,
   layerOptions,
   mockPatrols,
   mockPatrolRegistry,
+  mockWaypoints,
   statusOptions,
+  tacticalWaypointSourceLabel,
+  tacticalWaypointsFromRows,
+  type ExerciseOption,
   type LayerMode,
   type LivePatrol,
   type PatrolRegistryItem,
   type PatrolSessionRecord,
+  type TacticalWaypoint,
 } from "@/lib/live-patrols";
 
 const PatrolLiveMap = dynamic(() => import("@/components/patrol-live-map"), {
@@ -126,8 +133,8 @@ export function LiveMapPage() {
   const [includePinInExport, setIncludePinInExport] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [session, setSession] = useState<AdminSessionData | null>(null);
-  const [loginCode, setLoginCode] = useState("adm_rr");
-  const [loginPassword, setLoginPassword] = useState("230663");
+  const [loginCode, setLoginCode] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
   const [adminAccessEvents, setAdminAccessEvents] = useState<AdminAccessEvent[]>([]);
   const [adminAccessFilter, setAdminAccessFilter] = useState("all");
@@ -146,6 +153,18 @@ export function LiveMapPage() {
   const [adminsFormPin, setAdminsFormPin] = useState("");
   const [adminsFormRole, setAdminsFormRole] = useState<"admin" | "viewer">("admin");
   const [adminsFormEnabled, setAdminsFormEnabled] = useState(true);
+
+  const [waypoints, setWaypoints] = useState<TacticalWaypoint[]>(mockWaypoints);
+  const [exerciseOptions, setExerciseOptions] = useState<ExerciseOption[]>([]);
+  const [waypointExerciseId, setWaypointExerciseId] = useState("");
+  const [waypointLabel, setWaypointLabel] = useState("");
+  const [waypointLat, setWaypointLat] = useState("");
+  const [waypointLon, setWaypointLon] = useState("");
+  const [waypointAlt, setWaypointAlt] = useState("");
+  const [editingWaypointId, setEditingWaypointId] = useState<string | null>(null);
+  const [waypointBusy, setWaypointBusy] = useState(false);
+  const [waypointFormError, setWaypointFormError] = useState<string | null>(null);
+  const [waypointFeedError, setWaypointFeedError] = useState<string | null>(null);
 
   const isViewer = session?.role === "viewer";
   const canEdit = session?.role === "admin";
@@ -186,6 +205,9 @@ export function LiveMapPage() {
     if (!supabase) {
       setPatrols(mockPatrols);
       setMissions(["MISSIONE ALFA", "MISSIONE BRAVO", "MISSIONE CHARLIE"]);
+      setWaypoints(mockWaypoints);
+      setExerciseOptions([]);
+      setWaypointFeedError(null);
       setBackendMode("mock");
       setLastRefreshAt(new Date().toISOString());
       return;
@@ -435,11 +457,61 @@ export function LiveMapPage() {
         },
       );
 
+      const [wpRes, exRes, activeExerciseRes] = await Promise.all([
+        supabase
+          .from("tactical_map_points")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(400),
+        supabase.from("exercises").select("id, title, is_active").order("title"),
+        supabase.from("exercises").select("id, title").eq("is_active", true).maybeSingle(),
+      ]);
+
+      if (!wpRes.error && wpRes.data) {
+        setWaypoints(tacticalWaypointsFromRows(wpRes.data as Record<string, unknown>[]));
+        setWaypointFeedError(null);
+      } else {
+        if (wpRes.error) {
+          console.warn("tactical_map_points:", wpRes.error.message);
+          setWaypointFeedError(
+            `Lettura waypoint non riuscita: ${wpRes.error.message}. Verifica tabella e policy RLS su tactical_map_points.`,
+          );
+        }
+      }
+
+      let nextExercises: ExerciseOption[] = [];
+      if (!exRes.error && exRes.data) {
+        nextExercises = exRes.data.map((row) => ({
+          id: row.id as string,
+          title: ((row.title as string) ?? "").trim() || "Esercitazione",
+          isActive: (row.is_active as boolean | null) ?? null,
+        }));
+      } else if (exRes.error) {
+        console.warn("exercises:", exRes.error.message);
+      }
+
+      if (
+        nextExercises.length === 0 &&
+        !activeExerciseRes.error &&
+        activeExerciseRes.data?.id
+      ) {
+        nextExercises = [
+          {
+            id: activeExerciseRes.data.id as string,
+            title:
+              (((activeExerciseRes.data.title as string) ?? "").trim() ||
+                "Esercitazione attiva"),
+            isActive: true,
+          },
+        ];
+      }
+
       setPatrols(nextPatrols);
       setMissions(nextMissions);
       setRegistryItems(nextRegistry);
       setAdminAccessEvents(nextAccessEvents);
       setSessionRecords(nextSessionRecords);
+      setExerciseOptions(nextExercises);
       setBackendMode("live");
       setMessage(
         nextPatrols.length > 0
@@ -453,6 +525,8 @@ export function LiveMapPage() {
       setBackendMode("mock");
       setPatrols(mockPatrols);
       setMissions(["MISSIONE ALFA", "MISSIONE BRAVO", "MISSIONE CHARLIE"]);
+      setWaypoints(mockWaypoints);
+      setExerciseOptions([]);
       setRegistryItems(mockPatrolRegistry);
       setAdminAccessEvents([]);
       setSessionRecords([]);
@@ -465,9 +539,74 @@ export function LiveMapPage() {
     }
   }, [supabase]);
 
+  const refreshWaypointsOnly = useCallback(async () => {
+    if (!supabase) {
+      setWaypoints(mockWaypoints);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("tactical_map_points")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(400);
+
+    if (!error && data) {
+      setWaypoints(tacticalWaypointsFromRows(data as Record<string, unknown>[]));
+      setWaypointFeedError(null);
+    } else if (error) {
+      setWaypointFeedError(
+        `Aggiornamento waypoint: ${error.message}`,
+      );
+    }
+  }, [supabase]);
+
   useEffect(() => {
+    if (!session) {
+      return;
+    }
     void loadData();
-  }, [loadData]);
+  }, [loadData, session]);
+
+  useEffect(() => {
+    if (exerciseOptions.length === 0) {
+      return;
+    }
+
+    setWaypointExerciseId((prev) => {
+      if (prev && exerciseOptions.some((row) => row.id === prev)) {
+        return prev;
+      }
+
+      const active = exerciseOptions.find((row) => row.isActive);
+      return active?.id ?? exerciseOptions[0]!.id;
+    });
+  }, [exerciseOptions]);
+
+  useEffect(() => {
+    if (!supabase || !session) {
+      return;
+    }
+
+    const channel = supabase
+      .channel("realtime-tactical-map-points")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "tactical_map_points",
+        },
+        () => {
+          void refreshWaypointsOnly();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [refreshWaypointsOnly, session, supabase]);
 
   useEffect(() => {
     if (!session) {
@@ -535,6 +674,151 @@ export function LiveMapPage() {
   const accessUsers = useMemo(() => {
     return Array.from(new Set(adminAccessEvents.map((event) => event.adminCode))).sort();
   }, [adminAccessEvents]);
+
+  function resetWaypointForm() {
+    setEditingWaypointId(null);
+    setWaypointLabel("");
+    setWaypointLat("");
+    setWaypointLon("");
+    setWaypointAlt("");
+    setWaypointFormError(null);
+  }
+
+  function beginEditWaypoint(waypoint: TacticalWaypoint) {
+    setWaypointFormError(null);
+    setEditingWaypointId(waypoint.id);
+    setWaypointExerciseId(waypoint.exerciseId);
+    setWaypointLabel(waypoint.label ?? "");
+    setWaypointLat(String(waypoint.latitude));
+    setWaypointLon(String(waypoint.longitude));
+    setWaypointAlt(waypoint.altitudeM !== null ? String(waypoint.altitudeM) : "");
+  }
+
+  async function handleWaypointSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!supabase || !session) {
+      setWaypointFormError("Sessione non valida.");
+      return;
+    }
+
+    if (!canEdit) {
+      setWaypointFormError("Solo gli admin possono modificare i waypoint.");
+      return;
+    }
+
+    const lat = Number(waypointLat.replace(",", "."));
+    const lon = Number(waypointLon.replace(",", "."));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      setWaypointFormError("Latitudine e longitudine devono essere numeri validi.");
+      return;
+    }
+
+    if (!waypointExerciseId) {
+      setWaypointFormError("Seleziona un'esercitazione.");
+      return;
+    }
+
+    const altTrim = waypointAlt.trim();
+    const altitudeParsed =
+      altTrim === "" ? null : Number(altTrim.replace(",", "."));
+
+    if (altitudeParsed !== null && !Number.isFinite(altitudeParsed)) {
+      setWaypointFormError("Quota non valida.");
+      return;
+    }
+
+    setWaypointBusy(true);
+    setWaypointFormError(null);
+
+    try {
+      if (editingWaypointId) {
+        const { error } = await supabase
+          .from("tactical_map_points")
+          .update({
+            exercise_id: waypointExerciseId,
+            latitude: lat,
+            longitude: lon,
+            altitude_m: altitudeParsed,
+            label: waypointLabel.trim() ? waypointLabel.trim() : null,
+          })
+          .eq("id", editingWaypointId);
+
+        if (error) {
+          throw error;
+        }
+
+        setMessage(`Waypoint aggiornato.`);
+      } else {
+        const { error } = await supabase.from("tactical_map_points").insert({
+          exercise_id: waypointExerciseId,
+          latitude: lat,
+          longitude: lon,
+          altitude_m: altitudeParsed,
+          label: waypointLabel.trim() ? waypointLabel.trim() : null,
+          created_by_admin_code: session.code,
+          source: "backoffice",
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        setMessage("Nuovo waypoint salvato sul database.");
+      }
+
+      resetWaypointForm();
+      await refreshWaypointsOnly();
+    } catch (error) {
+      const errorText =
+        error instanceof Error ? error.message : "Errore sconosciuto.";
+      setWaypointFormError(errorText);
+    } finally {
+      setWaypointBusy(false);
+    }
+  }
+
+  async function handleDeleteWaypointFromMap(waypoint: TacticalWaypoint) {
+    if (!supabase || !canEdit) {
+      setMessage("Eliminazione waypoint non consentita.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Eliminare il waypoint "${waypoint.label?.trim() || "senza nome"}"?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setWaypointBusy(true);
+    setWaypointFormError(null);
+
+    try {
+      const { error } = await supabase
+        .from("tactical_map_points")
+        .delete()
+        .eq("id", waypoint.id);
+
+      if (error) {
+        throw error;
+      }
+
+      if (editingWaypointId === waypoint.id) {
+        resetWaypointForm();
+      }
+
+      setMessage("Waypoint eliminato.");
+      await refreshWaypointsOnly();
+    } catch (error) {
+      const errorText =
+        error instanceof Error ? error.message : "Errore sconosciuto.";
+      setWaypointFormError(errorText);
+    } finally {
+      setWaypointBusy(false);
+    }
+  }
 
   async function handleForceLogout(patrol: LivePatrol) {
     if (!canEdit) {
@@ -1245,6 +1529,7 @@ export function LiveMapPage() {
       );
       setSession(nextSession);
       setLoginError(null);
+      await loadData();
       return;
     }
 
@@ -1326,6 +1611,19 @@ export function LiveMapPage() {
     window.localStorage.removeItem(ADMIN_SESSION_STORAGE_KEY);
     setSession(null);
     setLoginError(null);
+    setLoginCode("");
+    setLoginPassword("");
+    setPatrols(mockPatrols);
+    setWaypoints(mockWaypoints);
+    setExerciseOptions([]);
+    setWaypointFeedError(null);
+    setWaypointFormError(null);
+    setLastRefreshAt(null);
+    setMessage(
+      supabase
+        ? "Sessione chiusa. Accedi di nuovo per ricaricare i dati da Supabase."
+        : "Sessione chiusa.",
+    );
   }
 
   function resetAdminsForm() {
@@ -1565,15 +1863,19 @@ export function LiveMapPage() {
             <div className={styles.fieldGroup}>
               <label htmlFor="backend-login">Login</label>
               <input
+                autoComplete="username"
+                className={styles.authInput}
                 id="backend-login"
                 onChange={(event) => setLoginCode(event.target.value)}
-                placeholder="adm_rr oppure view_001"
+                placeholder="Codice admin o viewer"
                 value={loginCode}
               />
             </div>
             <div className={styles.fieldGroup}>
               <label htmlFor="backend-password">Password</label>
               <input
+                autoComplete="current-password"
+                className={styles.authInput}
                 id="backend-password"
                 onChange={(event) => setLoginPassword(event.target.value)}
                 placeholder="Password"
@@ -1780,6 +2082,33 @@ export function LiveMapPage() {
           </div>
 
           <div className={styles.toolbarCard}>
+            <label>Waypoint ▲ / scala</label>
+            <button
+              className={styles.mapAction}
+              type="button"
+              onClick={() =>
+                document
+                  .getElementById("waypoint-tactical-panel")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            >
+              Vai al pannello waypoint
+            </button>
+            <p
+              style={{
+                margin: "8px 0 0",
+                fontSize: 12,
+                color: "#98a5c5",
+                fontWeight: 600,
+                lineHeight: 1.45,
+              }}
+            >
+              Sulla mappa: triangoli gialli = waypoint; scala metrica in{" "}
+              <strong>basso a sinistra</strong>.
+            </p>
+          </div>
+
+          <div className={styles.toolbarCard}>
             <label>Ultimo refresh</label>
             <div className={styles.messageBox}>
               {lastRefreshAt ? formatFixTimestamp(lastRefreshAt) : "In attesa"}
@@ -1795,8 +2124,8 @@ export function LiveMapPage() {
               <div className={styles.mapHeaderTitle}>
                 <h2>Operational Map</h2>
                 <p>
-                  Marker live, popup pattuglia, filtro stato e switch
-                  `Standard / Ortofoto`.
+                  Marker live e waypoint (▲ giallo); scala in basso a sinistra; filtro stato
+                  e layer Standard / Ortofoto.
                 </p>
               </div>
               <div className={styles.mapHeaderActions}>
@@ -1825,16 +2154,22 @@ export function LiveMapPage() {
 
             <div className={styles.mapStage}>
               <PatrolLiveMap
-                layerMode={layerMode}
-                patrols={filteredPatrols}
+                canManageWaypoints={canEdit}
                 focusedPatrol={focusedPatrol}
-                selectedSessionId={selectedSessionId}
-                onForceLogout={handleForceLogout}
+                layerMode={layerMode}
+                onDeleteWaypoint={handleDeleteWaypointFromMap}
+                onEditWaypoint={(waypoint) => {
+                  beginEditWaypoint(waypoint);
+                }}
                 onFocusHandled={() => setFocusedPatrol(null)}
+                onForceLogout={handleForceLogout}
                 onSelectPatrol={(patrol) => {
                   setSelectedSessionId(patrol.sessionId);
                   setFocusedPatrol(patrol);
                 }}
+                patrols={filteredPatrols}
+                selectedSessionId={selectedSessionId}
+                waypoints={waypoints}
               />
             </div>
           </article>
@@ -1966,6 +2301,201 @@ export function LiveMapPage() {
                     Nessuna pattuglia corrisponde ai filtri attuali.
                   </div>
                 )}
+              </div>
+            </section>
+
+            <section
+              className={styles.panelCard}
+              id="waypoint-tactical-panel"
+              style={{ order: -1 }}
+            >
+              <div className={styles.panelHeader}>
+                <div className={styles.panelHeaderTitle}>
+                  <h2>Waypoint tattici</h2>
+                  <p>
+                    Stesso database dell&apos;app TOC (
+                    <code>tactical_map_points</code>): lettura realtime; creazione /
+                    modifica da PC con profilo admin.
+                  </p>
+                </div>
+              </div>
+
+              <div className={styles.registryForm}>
+                <div className={styles.messageBox}>
+                  {waypoints.length} waypoint in elenco · Ultima fonte:
+                  sincronizzazione Supabase e canale Realtime.
+                </div>
+
+                {waypointFeedError ? (
+                  <div
+                    className={styles.messageBox}
+                    style={{ borderColor: "#ffa726", color: "#ffe0b2" }}
+                  >
+                    {waypointFeedError}
+                  </div>
+                ) : null}
+
+                {waypointFormError ? (
+                  <div className={styles.messageBox} style={{ borderColor: "#d91f2a" }}>
+                    {waypointFormError}
+                  </div>
+                ) : null}
+
+                {canEdit && supabase && exerciseOptions.length > 0 ? (
+                  <form onSubmit={handleWaypointSubmit}>
+                    <div className={styles.fieldGroup}>
+                      <label htmlFor="wp-exercise">Esercitazione</label>
+                      <select
+                        id="wp-exercise"
+                        value={waypointExerciseId}
+                        onChange={(event) => setWaypointExerciseId(event.target.value)}
+                      >
+                        {exerciseOptions.map((row) => (
+                          <option key={row.id} value={row.id}>
+                            {row.title}
+                            {row.isActive ? " (attiva)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className={styles.fieldGroup}>
+                      <label htmlFor="wp-label">Etichetta</label>
+                      <input
+                        id="wp-label"
+                        placeholder="Es. CP nord / Obiettivo"
+                        value={waypointLabel}
+                        onChange={(event) => setWaypointLabel(event.target.value)}
+                      />
+                    </div>
+
+                    <div className={styles.formGrid}>
+                      <div className={styles.fieldGroup}>
+                        <label htmlFor="wp-lat">Latitudine</label>
+                        <input
+                          id="wp-lat"
+                          inputMode="decimal"
+                          placeholder="45.0703"
+                          value={waypointLat}
+                          onChange={(event) => setWaypointLat(event.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className={styles.fieldGroup}>
+                        <label htmlFor="wp-lon">Longitudine</label>
+                        <input
+                          id="wp-lon"
+                          inputMode="decimal"
+                          placeholder="7.6869"
+                          value={waypointLon}
+                          onChange={(event) => setWaypointLon(event.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className={styles.fieldGroup}>
+                      <label htmlFor="wp-alt">Quota (m, opzionale)</label>
+                      <input
+                        id="wp-alt"
+                        inputMode="decimal"
+                        placeholder="es. 320"
+                        value={waypointAlt}
+                        onChange={(event) => setWaypointAlt(event.target.value)}
+                      />
+                    </div>
+
+                    <div className={styles.formActions}>
+                      <button
+                        className={styles.mapAction}
+                        disabled={waypointBusy}
+                        type="submit"
+                      >
+                        {editingWaypointId ? "Salva modifiche" : "Aggiungi waypoint"}
+                      </button>
+                      {editingWaypointId ? (
+                        <button
+                          className={styles.ghostButton}
+                          disabled={waypointBusy}
+                          onClick={() => {
+                            resetWaypointForm();
+                          }}
+                          type="button"
+                        >
+                          Annulla modifica
+                        </button>
+                      ) : null}
+                    </div>
+                  </form>
+                ) : null}
+
+                {!canEdit ? (
+                  <div className={styles.emptyState}>
+                    Profilo viewer: puoi vedere waypoint e coordinate sulla mappa, ma non
+                    modificarli.
+                  </div>
+                ) : null}
+
+                {canEdit && supabase && exerciseOptions.length === 0 ? (
+                  <div className={styles.emptyState}>
+                    Nessuna esercitazione trovata su Supabase (`exercises`). Inserisci almeno
+                    una riga per poter creare waypoint dal backoffice.
+                  </div>
+                ) : null}
+
+                <div className={styles.listBody} style={{ marginTop: 12 }}>
+                  {waypoints.length === 0 ? (
+                    <div className={styles.emptyState}>Nessun waypoint registrato.</div>
+                  ) : (
+                    waypoints.map((waypoint) => (
+                      <article className={styles.listItem} key={waypoint.id}>
+                        <div className={styles.listRow}>
+                          <div className={styles.listIdentity}>
+                            <div className={styles.listIdentityTop}>
+                              <span className={styles.listCode}>
+                                {waypoint.label?.trim() || "Waypoint"}
+                              </span>
+                              <span className={styles.missionText}>
+                                {waypoint.latitude.toFixed(5)}, {waypoint.longitude.toFixed(5)}
+                                {waypoint.altitudeM !== null
+                                  ? ` · ${waypoint.altitudeM.toFixed(0)} m`
+                                  : ""}
+                              </span>
+                            </div>
+                            <span className={styles.missionText}>
+                              {tacticalWaypointSourceLabel(waypoint.source)} ·{" "}
+                              {formatWaypointTimestamp(waypoint.createdAt)}
+                              {waypoint.createdByAdminCode
+                                ? ` · ${waypoint.createdByAdminCode}`
+                                : ""}
+                            </span>
+                          </div>
+                          {canEdit && supabase ? (
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              <button
+                                className={styles.inlineButton}
+                                disabled={waypointBusy}
+                                onClick={() => beginEditWaypoint(waypoint)}
+                                type="button"
+                              >
+                                Modifica
+                              </button>
+                              <button
+                                className={styles.inlineButton}
+                                disabled={waypointBusy}
+                                onClick={() => void handleDeleteWaypointFromMap(waypoint)}
+                                style={{ color: "#ff8a80" }}
+                                type="button"
+                              >
+                                Elimina
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      </article>
+                    ))
+                  )}
+                </div>
               </div>
             </section>
 

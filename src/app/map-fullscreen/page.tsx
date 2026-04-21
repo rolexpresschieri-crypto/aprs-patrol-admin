@@ -13,9 +13,12 @@ import {
   getStatusColor,
   getStatusLabel,
   mockPatrols,
+  mockWaypoints,
   statusOptions,
+  tacticalWaypointsFromRows,
   type LayerMode,
   type LivePatrol,
+  type TacticalWaypoint,
 } from "@/lib/live-patrols";
 
 const PatrolLiveMap = dynamic(() => import("@/components/patrol-live-map"), {
@@ -32,6 +35,7 @@ export default function FullscreenMapPage() {
   }, []);
 
   const [patrols, setPatrols] = useState<LivePatrol[]>(mockPatrols);
+  const [waypoints, setWaypoints] = useState<TacticalWaypoint[]>(mockWaypoints);
   const [layerMode, setLayerMode] = useState<LayerMode>("standard");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [focusedPatrol, setFocusedPatrol] = useState<LivePatrol | null>(null);
@@ -54,27 +58,62 @@ export default function FullscreenMapPage() {
     setAuthChecked(true);
   }, []);
 
+  const refreshWaypointsOnly = useCallback(async () => {
+    if (!supabase) {
+      setWaypoints(mockWaypoints);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("tactical_map_points")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(400);
+
+    if (!error && data) {
+      setWaypoints(tacticalWaypointsFromRows(data as Record<string, unknown>[]));
+    }
+  }, [supabase]);
+
   const loadData = useCallback(async () => {
     if (!supabase) {
       setPatrols(mockPatrols);
+      setWaypoints(mockWaypoints);
       setMessage("Supabase non configurato: visualizzazione mock attiva.");
       setLastRefreshAt(new Date().toISOString());
       return;
     }
 
     try {
-      const { data, error } = await supabase
+      const patrolQuery = supabase
         .from("active_patrol_summaries")
         .select(
           "session_id, exercise_id, patrol_id, patrol_code, patrol_name, mission_id, mission_name, current_status, last_status_at, is_online, last_latitude, last_longitude, last_accuracy, last_fix_at",
         )
         .order("patrol_code", { ascending: true });
 
-      if (error) {
-        throw error;
+      const waypointQuery = supabase
+        .from("tactical_map_points")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(400);
+
+      const [patrolRes, waypointRes] = await Promise.all([
+        patrolQuery,
+        waypointQuery,
+      ]);
+
+      if (patrolRes.error) {
+        throw patrolRes.error;
       }
 
-      const nextPatrols: LivePatrol[] = (data ?? []).map((row) => ({
+      if (!waypointRes.error && waypointRes.data) {
+        setWaypoints(tacticalWaypointsFromRows(waypointRes.data as Record<string, unknown>[]));
+      } else if (waypointRes.error) {
+        console.warn("tactical_map_points:", waypointRes.error.message);
+      }
+
+      const nextPatrols: LivePatrol[] = (patrolRes.data ?? []).map((row) => ({
         sessionId: row.session_id as string,
         exerciseId: row.exercise_id as string,
         patrolId: row.patrol_id as string,
@@ -102,6 +141,7 @@ export default function FullscreenMapPage() {
       const errorText =
         error instanceof Error ? error.message : "Errore sconosciuto.";
       setPatrols(mockPatrols);
+      setWaypoints(mockWaypoints);
       setMessage(`Errore feed live: ${errorText}. Rimango in mock.`);
       setLastRefreshAt(new Date().toISOString());
     }
@@ -126,6 +166,31 @@ export default function FullscreenMapPage() {
 
     return () => window.clearInterval(timer);
   }, [loadData, session]);
+
+  useEffect(() => {
+    if (!supabase || !session) {
+      return;
+    }
+
+    const channel = supabase
+      .channel("fullscreen-tactical-map-points")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "tactical_map_points",
+        },
+        () => {
+          void refreshWaypointsOnly();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [refreshWaypointsOnly, session, supabase]);
 
   if (!authChecked) {
     return null;
@@ -205,6 +270,7 @@ export default function FullscreenMapPage() {
           }}
           patrols={patrols}
           selectedSessionId={selectedSessionId}
+          waypoints={waypoints}
         />
       </section>
 

@@ -403,12 +403,18 @@
 .mapStage {
   height: min(68vh, 760px);
   background: #08101d;
+  position: relative;
+  isolation: isolate;
 }
 
 .sidePanels {
-  display: grid;
-  grid-template-rows: minmax(240px, auto) minmax(280px, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 18px;
+  min-height: 0;
+  overflow-y: auto;
+  align-items: stretch;
+  padding-right: 4px;
 }
 
 .stats {
@@ -1121,6 +1127,16 @@
   outline: none;
 }
 
+.fieldGroup select {
+  width: 100%;
+  border: 1px solid #2b4278;
+  border-radius: 12px;
+  background: #09101f;
+  color: #edf2ff;
+  padding: 12px 14px;
+  outline: none;
+}
+
 .checkboxRow {
   display: flex;
   align-items: center;
@@ -1192,6 +1208,21 @@
 .authForm {
   display: grid;
   gap: 12px;
+}
+
+.authInput {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid #2b4278;
+  background: #09101f;
+  color: #edf2ff;
+  padding: 12px 14px;
+  outline: none;
+}
+
+.authForm .authInput::placeholder {
+  color: #6b738c;
+  opacity: 1;
 }
 
 @media (max-width: 1360px) {

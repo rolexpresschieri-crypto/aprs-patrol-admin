@@ -17,6 +17,25 @@ export type LivePatrol = {
   lastStatusAt: string;
 };
 
+/** `tactical_map_points` — stessi campi usati da app mobile + inserimenti backoffice. */
+export type TacticalWaypoint = {
+  id: string;
+  exerciseId: string;
+  label: string | null;
+  latitude: number;
+  longitude: number;
+  altitudeM: number | null;
+  createdAt: string;
+  createdByAdminCode: string | null;
+  source: string;
+};
+
+export type ExerciseOption = {
+  id: string;
+  title: string;
+  isActive: boolean | null;
+};
+
 export type PatrolRegistryItem = {
   id: string;
   patrolCode: string;
@@ -116,6 +135,55 @@ export function formatTimeOnly(timestamp: string | null) {
 
 export function hasCoordinates(patrol: LivePatrol) {
   return patrol.lastLatitude !== null && patrol.lastLongitude !== null;
+}
+
+export function tacticalWaypointSourceLabel(source: string) {
+  const s = source.trim().toLowerCase();
+  if (s === "toc_mobile") {
+    return "App TOC";
+  }
+  if (s === "backoffice") {
+    return "Backoffice PC";
+  }
+  return source || "—";
+}
+
+export function formatWaypointTimestamp(iso: string | null) {
+  if (!iso) {
+    return "n/d";
+  }
+  return new Intl.DateTimeFormat("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}
+
+/** Righe Supabase → modello UI condiviso (live map + fullscreen). */
+export function tacticalWaypointsFromRows(
+  rows: Record<string, unknown>[],
+): TacticalWaypoint[] {
+  return rows
+    .map((row) => {
+      const lat = Number(row.latitude);
+      const lon = Number(row.longitude);
+      return {
+        id: String(row.id),
+        exerciseId: String(row.exercise_id),
+        label: (row.label as string | null) ?? null,
+        latitude: lat,
+        longitude: lon,
+        altitudeM: row.altitude_m != null ? Number(row.altitude_m) : null,
+        createdAt: String(row.created_at),
+        createdByAdminCode: (row.created_by_admin_code as string | null) ?? null,
+        source: (row.source as string) ?? "toc_mobile",
+      };
+    })
+    .filter(
+      (w) => w.id.length > 0 && Number.isFinite(w.latitude) && Number.isFinite(w.longitude),
+    );
 }
 
 export function formatSessionDuration(loginAt: string, logoutAt: string | null) {
@@ -234,6 +302,20 @@ export const mockPatrols: LivePatrol[] = [
     lastAccuracy: null,
     lastFixAt: null,
     lastStatusAt: "2026-04-07T18:30:00+02:00",
+  },
+];
+
+export const mockWaypoints: TacticalWaypoint[] = [
+  {
+    id: "demo-wp-001",
+    exerciseId: "demo-exercise",
+    label: "CP Alfa (demo)",
+    latitude: 45.071,
+    longitude: 7.688,
+    altitudeM: 245,
+    createdAt: "2026-04-07T12:00:00+02:00",
+    createdByAdminCode: "demo",
+    source: "backoffice",
   },
 ];
 

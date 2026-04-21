@@ -1,0 +1,65 @@
+/* Scala: in basso a sinistra così non si sovrappone all’attribuzione OSM (destra). */
+.patrol-tactical-map.leaflet-container .leaflet-control-scale {
+  margin-bottom: 12px;
+  margin-left: 8px;
+  z-index: 900 !important;
+}
+
+.patrol-tactical-map.leaflet-container .leaflet-control-scale-line {
+  border: 2px solid #e0be3a !important;
+  border-top: none !important;
+  background: rgba(0, 0, 0, 0.62) !important;
+  box-shadow:
+    0 0 0 2px rgba(0, 0, 0, 0.82),
+    0 2px 8px rgba(0, 0, 0, 0.45);
+  color: #e0be3a !important;
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1.35;
+  padding: 4px 8px 3px !important;
+  text-shadow:
+    -1px -1px 0 rgba(0, 0, 0, 0.92),
+    1px -1px 0 rgba(0, 0, 0, 0.92),
+    -1px 1px 0 rgba(0, 0, 0, 0.92),
+    1px 1px 0 rgba(0, 0, 0, 0.92),
+    0 0 5px rgba(0, 0, 0, 0.45);
+}
+
+.patrol-tactical-map.leaflet-container .leaflet-control-attribution {
+  background: transparent !important;
+  color: #e0be3a !important;
+  font-size: 10px;
+  font-weight: 500;
+  max-width: min(96vw, 520px);
+  white-space: normal;
+  text-shadow:
+    -1px -1px 0 rgba(0, 0, 0, 0.85),
+    1px -1px 0 rgba(0, 0, 0, 0.85),
+    -1px 1px 0 rgba(0, 0, 0, 0.85),
+    1px 1px 0 rgba(0, 0, 0, 0.85),
+    0 0 4px rgba(0, 0, 0, 0.5);
+}
+
+.patrol-tactical-map.leaflet-container .leaflet-control-attribution a {
+  color: #e0be3a !important;
+}
+
+/* Marker waypoint (triangolo allerta come hint visivo TOC) */
+.tactical-waypoint-divicon {
+  background: transparent !important;
+  border: none !important;
+}
+
+.tactical-waypoint-glyph {
+  font-size: 26px;
+  line-height: 1;
+  color: #e0be3a;
+  text-shadow:
+    -1.5px -1.5px 0 #1a1a1a,
+    1.5px -1.5px 0 #1a1a1a,
+    -1.5px 1.5px 0 #1a1a1a,
+    1.5px 1.5px 0 #1a1a1a,
+    0 0 6px rgba(0, 0, 0, 0.7);
+  filter: drop-shadow(0 1px 0 #d91f2a);
+  transform: translateY(2px);
+}

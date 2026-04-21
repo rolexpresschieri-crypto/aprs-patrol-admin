@@ -1,22 +1,29 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
-import { useEffect, useRef } from "react";
+import "./patrol-live-map.css";
+import L from "leaflet";
+import { useEffect, useMemo, useRef } from "react";
 import {
   CircleMarker,
   MapContainer,
+  Marker,
   Popup,
+  ScaleControl,
   TileLayer,
   useMap,
 } from "react-leaflet";
 import type { LatLngExpression } from "leaflet";
 import {
   formatFixTimestamp,
+  formatWaypointTimestamp,
   getStatusColor,
   getStatusLabel,
   hasCoordinates,
+  tacticalWaypointSourceLabel,
   type LayerMode,
   type LivePatrol,
+  type TacticalWaypoint,
 } from "@/lib/live-patrols";
 
 const defaultCenter: LatLngExpression = [45.0703, 7.6869];
@@ -24,19 +31,25 @@ const defaultCenter: LatLngExpression = [45.0703, 7.6869];
 type PatrolLiveMapProps = {
   layerMode: LayerMode;
   patrols: LivePatrol[];
+  waypoints: TacticalWaypoint[];
   focusedPatrol: LivePatrol | null;
   selectedSessionId: string | null;
   onSelectPatrol: (patrol: LivePatrol) => void;
   onForceLogout: (patrol: LivePatrol) => void;
   onFocusHandled: () => void;
+  canManageWaypoints?: boolean;
+  onDeleteWaypoint?: (waypoint: TacticalWaypoint) => void;
+  onEditWaypoint?: (waypoint: TacticalWaypoint) => void;
 };
 
 function MapViewportController({
   patrols,
+  waypoints,
   focusedPatrol,
   onFocusHandled,
 }: {
   patrols: LivePatrol[];
+  waypoints: TacticalWaypoint[];
   focusedPatrol: LivePatrol | null;
   onFocusHandled: () => void;
 }) {
@@ -72,9 +85,15 @@ function MapViewportController({
       return;
     }
 
-    const points = patrols
+    const patrolPoints = patrols
       .filter(hasCoordinates)
       .map((patrol) => [patrol.lastLatitude!, patrol.lastLongitude!] as [number, number]);
+
+    const waypointPoints = waypoints.map(
+      (waypoint) => [waypoint.latitude, waypoint.longitude] as [number, number],
+    );
+
+    const points = [...patrolPoints, ...waypointPoints];
 
     if (points.length === 0) {
       map.setView(defaultCenter, 12);
@@ -90,7 +109,7 @@ function MapViewportController({
 
     map.fitBounds(points, { padding: [40, 40] });
     initializedRef.current = true;
-  }, [focusedPatrol, map, onFocusHandled, patrols]);
+  }, [focusedPatrol, map, onFocusHandled, patrols, waypoints]);
 
   return null;
 }
@@ -98,11 +117,15 @@ function MapViewportController({
 export default function PatrolLiveMap({
   layerMode,
   patrols,
+  waypoints,
   focusedPatrol,
   selectedSessionId,
   onSelectPatrol,
   onForceLogout,
   onFocusHandled,
+  canManageWaypoints = false,
+  onDeleteWaypoint,
+  onEditWaypoint,
 }: PatrolLiveMapProps) {
   const tileUrl =
     layerMode === "orthophoto"
@@ -114,16 +137,31 @@ export default function PatrolLiveMap({
       ? "&copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community"
       : "&copy; OpenStreetMap contributors";
 
+  const waypointIcon = useMemo(
+    () =>
+      L.divIcon({
+        className: "tactical-waypoint-divicon",
+        html: '<div class="tactical-waypoint-glyph" aria-hidden="true">▲</div>',
+        iconSize: [30, 30],
+        iconAnchor: [15, 26],
+        popupAnchor: [0, -22],
+      }),
+    [],
+  );
+
   return (
     <MapContainer
       center={defaultCenter}
       zoom={12}
       style={{ width: "100%", height: "100%" }}
       scrollWheelZoom
+      className="patrol-tactical-map"
     >
       <TileLayer attribution={attribution} url={tileUrl} />
+      <ScaleControl imperial={false} maxWidth={140} metric position="bottomleft" />
       <MapViewportController
         patrols={patrols}
+        waypoints={waypoints}
         focusedPatrol={focusedPatrol}
         onFocusHandled={onFocusHandled}
       />
@@ -206,6 +244,88 @@ export default function PatrolLiveMap({
           </CircleMarker>
         );
       })}
+
+      {waypoints.map((waypoint) => (
+        <Marker
+          key={waypoint.id}
+          position={[waypoint.latitude, waypoint.longitude]}
+          icon={waypointIcon}
+        >
+          <Popup minWidth={260}>
+            <div
+              style={{
+                display: "grid",
+                gap: 8,
+                minWidth: 220,
+                color: "#111827",
+              }}
+            >
+              <div>
+                <strong>
+                  {waypoint.label?.trim() ? waypoint.label : "Waypoint"}
+                </strong>
+              </div>
+              <div>
+                Coordinate: {waypoint.latitude.toFixed(5)},{" "}
+                {waypoint.longitude.toFixed(5)}
+              </div>
+              {waypoint.altitudeM !== null ? (
+                <div>Quota: {waypoint.altitudeM.toFixed(0)} m</div>
+              ) : null}
+              <div>
+                Origine: {tacticalWaypointSourceLabel(waypoint.source)}
+              </div>
+              <div>
+                Creato: {formatWaypointTimestamp(waypoint.createdAt)}
+                {waypoint.createdByAdminCode ? (
+                  <span>
+                    {" "}
+                    ({waypoint.createdByAdminCode})
+                  </span>
+                ) : null}
+              </div>
+              {(canManageWaypoints && (onDeleteWaypoint || onEditWaypoint)) ? (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {onEditWaypoint ? (
+                    <button
+                      type="button"
+                      onClick={() => onEditWaypoint(waypoint)}
+                      style={{
+                        border: 0,
+                        borderRadius: 10,
+                        padding: "8px 10px",
+                        background: "#1171b7",
+                        color: "#ffffff",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                      }}
+                    >
+                      Modifica
+                    </button>
+                  ) : null}
+                  {onDeleteWaypoint ? (
+                    <button
+                      type="button"
+                      onClick={() => onDeleteWaypoint(waypoint)}
+                      style={{
+                        border: 0,
+                        borderRadius: 10,
+                        padding: "8px 10px",
+                        background: "#d91f2a",
+                        color: "#ffffff",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                      }}
+                    >
+                      Elimina
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </Popup>
+        </Marker>
+      ))}
     </MapContainer>
   );
 }
