@@ -59,7 +59,9 @@
 .mapMainGrid {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: hidden;
+  /* overflow:hidden sulla griglia interrompeva scrollIntoView/scroll nel main verso la colonna wp */
+  overflow-x: hidden;
+  overflow-y: visible;
   align-items: stretch;
 }
 

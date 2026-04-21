@@ -169,25 +169,36 @@ export function LiveMapPage() {
 
   const waypointPanelRef = useRef<HTMLElement | null>(null);
   const sidePanelsScrollRef = useRef<HTMLDivElement | null>(null);
+  const mainScrollRef = useRef<HTMLElement | null>(null);
 
   const scrollToWaypointPanel = useCallback(() => {
     const panel = waypointPanelRef.current;
     const side = sidePanelsScrollRef.current;
-    if (!panel) {
+    const mainEl =
+      mainScrollRef.current ??
+      (panel?.closest("main") as HTMLElement | null | undefined);
+    if (!panel || !mainEl) {
       return;
     }
 
+    const gapSide = 8;
+    const gapMain = 12;
+
     if (side) {
-      const delta =
-        panel.getBoundingClientRect().top - side.getBoundingClientRect().top;
-      side.scrollBy({ top: delta, behavior: "smooth" });
+      const d =
+        panel.getBoundingClientRect().top -
+        side.getBoundingClientRect().top -
+        gapSide;
+      side.scrollTop += d;
     }
 
-    panel.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-      inline: "nearest",
-    });
+    const dy =
+      panel.getBoundingClientRect().top -
+      mainEl.getBoundingClientRect().top -
+      gapMain;
+    mainEl.scrollTop += dy;
+
+    panel.focus({ preventScroll: true });
   }, []);
 
   const isViewer = session?.role === "viewer";
@@ -2001,6 +2012,7 @@ export function LiveMapPage() {
 
       <div className={styles.mainColumn}>
       <main
+        ref={mainScrollRef}
         className={
           adminView === "live-map"
             ? styles.contentLiveMap
