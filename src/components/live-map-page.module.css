@@ -46,9 +46,24 @@
 .contentLiveMap {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 22px;
+  gap: 10px;
+  padding: 10px 18px 18px;
   overscroll-behavior: contain;
+}
+
+.contentLiveMap .header {
+  padding: 0 0 6px;
+}
+
+.contentLiveMap .headerTitle h1 {
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.contentLiveMap .headerTitle p {
+  font-size: 13px;
+  line-height: 1.45;
+  max-width: 720px;
 }
 
 .contentLiveMap .header,
@@ -65,46 +80,60 @@
   align-items: stretch;
 }
 
-/* Una riga griglia con altezza minima → mappa + colonna destra non collassano a zero (pannelli “vuoti”). */
+/* Riga unica: altezza dalla mappa; align start evita “buchi” neri tra colonne su layout stretch. */
 .mainGrid.mapMainGrid {
-  grid-template-rows: minmax(min(460px, 58vh), auto);
+  grid-template-rows: auto;
+  align-items: start;
 }
 
 .mapCardLive {
   display: flex;
   flex-direction: column;
-  min-height: min(480px, 60vh);
+  min-height: min(440px, 56vh);
   overflow: hidden;
 }
 
 .mapCardLive .mapStage {
   flex: 1 1 auto;
   /* Altezza esplicita: Leaflet legge il box al primo paint (prima era ~0 → striscia). */
-  min-height: clamp(320px, 56vh, 840px);
-  height: clamp(340px, 56vh, 840px);
+  min-height: clamp(400px, min(68vh, 880px), 980px);
+  height: clamp(420px, min(70vh, 900px), 980px);
 }
 
 .mapCardLive .mapHeader {
-  padding: 11px 14px;
+  padding: 6px 10px;
 }
 
 .mapCardLive .mapHeaderTitle h2 {
-  font-size: 17px;
+  font-size: 15px;
 }
 
 .mapCardLive .mapHeaderTitle p {
-  font-size: 12px;
+  display: none;
 }
 
 .waypointPanelAnchor {
-  scroll-margin-top: 24px;
+  scroll-margin-top: 12px;
+}
+
+.waypointPanelHeaderDesc {
+  margin: 0;
+  color: #fff100;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.waypointPanelHeaderDesc code {
+  color: #ffe082;
+  font-weight: 700;
 }
 
 .waypointPanelCard {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  max-height: min(72vh, 840px);
+  max-height: min(84vh, 1040px);
 }
 
 .waypointPanelBody {
@@ -361,27 +390,54 @@
   gap: 12px;
 }
 
+/* Cinque colonne fisse: una sola riga (si restringono insieme; sotto ~900px scroll orizzontale). */
 .toolbarLive {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+.contentLiveMap .toolbarLive {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 1100px) {
+  .contentLiveMap .toolbarLive {
+    overflow-x: visible;
+  }
 }
 
 .contentLiveMap .toolbarLive .toolbarCard {
-  padding: 10px 12px;
-  gap: 6px;
-  border-radius: 14px;
+  padding: 6px 9px;
+  gap: 4px;
+  border-radius: 12px;
+  min-width: 0;
+}
+
+/* Card waypoint: stessa altezza delle altre (hint spostato sul title della label). */
+.contentLiveMap .toolbarLive .toolbarCardWaypoint .toolbarHint {
+  display: none;
 }
 
 .contentLiveMap .toolbarLive .toolbarCard label {
-  font-size: 11px;
-  letter-spacing: 0.06em;
+  font-size: 10px;
+  letter-spacing: 0.05em;
 }
 
 .contentLiveMap .toolbarLive .toolbarCard select,
 .contentLiveMap .toolbarLive .toolbarCard input {
-  padding: 8px 11px;
-  border-radius: 10px;
-  font-size: 13px;
+  padding: 6px 9px;
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.contentLiveMap .toolbarLive .mapAction {
+  padding: 7px 10px;
+  font-size: 12px;
+  border-radius: 9px;
 }
 
 .toolbarHint {
@@ -537,7 +593,7 @@
 .sidePanels {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
   min-height: 0;
   height: 100%;
   max-height: 100%;
@@ -1362,9 +1418,8 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .toolbarLive {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+  /* Non sovrascrivere .toolbarLive: altrimenti su laptop (≤1360px) la toolbar mappa
+     torna a 2 colonne e sembra che “non cambi mai nulla”. */
 
   .mainGrid {
     grid-template-columns: 1fr;
@@ -1375,12 +1430,12 @@
   }
 
   .mapCardLive .mapStage {
-    min-height: clamp(260px, 44vh, 620px);
-    height: clamp(280px, 44vh, 620px);
+    min-height: clamp(340px, 58vh, 760px);
+    height: clamp(360px, 60vh, 760px);
   }
 
   .mapCardLive {
-    min-height: min(400px, 50vh);
+    min-height: min(420px, 48vh);
   }
 
   .sidePanels {
@@ -1439,6 +1494,17 @@
 
   .toolbar {
     grid-template-columns: 1fr;
+  }
+
+  /* Toolbar filtri mappa live: resta una riga (5 col) con scroll orizzontale su schermi stretti.
+     La regola .toolbar sopra vinceva in cascade e impilava tutte le card. */
+  main.contentLiveMap .toolbar.toolbarLive {
+    grid-template-columns: repeat(5, minmax(72px, 1fr));
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    max-width: 100%;
   }
 
   .stats,

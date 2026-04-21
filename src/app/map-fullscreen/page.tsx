@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ADMIN_SESSION_STORAGE_KEY,
   type AdminSessionData,
@@ -43,6 +43,20 @@ export default function FullscreenMapPage() {
   const [lastRefreshAt, setLastRefreshAt] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [session, setSession] = useState<AdminSessionData | null>(null);
+  const mapFullscreenTargetRef = useRef<HTMLDivElement | null>(null);
+
+  const toggleMapFullscreen = useCallback(() => {
+    const el = mapFullscreenTargetRef.current;
+    if (!el) {
+      return;
+    }
+
+    if (!document.fullscreenElement) {
+      void el.requestFullscreen?.().catch(() => {});
+    } else {
+      void document.exitFullscreen?.().catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     const rawSession = window.localStorage.getItem(ADMIN_SESSION_STORAGE_KEY);
@@ -213,65 +227,82 @@ export default function FullscreenMapPage() {
   return (
     <main className={styles.screen}>
       <header className={styles.topBar}>
-        <div className={styles.topTitle}>
-          <span className={styles.eyebrow}>Fullscreen Tactical Map</span>
-          <h1>Mappa Live Secondo Schermo</h1>
-          <p>{message}</p>
+        <div className={styles.topBarMain}>
+          <div className={styles.topTitle}>
+            <span className={styles.eyebrow}>Fullscreen · Tactical Map</span>
+            <h1>Mappa operativa</h1>
+            <p>{message}</p>
+          </div>
+
+          <div className={styles.topActions}>
+            <select
+              aria-label="Layer mappa"
+              className={styles.layerSelect}
+              onChange={(event) => setLayerMode(event.target.value as LayerMode)}
+              value={layerMode}
+            >
+              <option value="standard">Standard</option>
+              <option value="orthophoto">Ortofoto</option>
+            </select>
+            <button
+              className={styles.refreshButton}
+              onClick={() => {
+                void loadData();
+              }}
+              type="button"
+            >
+              Aggiorna
+            </button>
+            <button
+              className={styles.fullscreenButton}
+              onClick={toggleMapFullscreen}
+              title="Schermo intero browser (Esc per uscire)"
+              type="button"
+            >
+              Schermo intero
+            </button>
+          </div>
         </div>
 
-        <div className={styles.topActions}>
-          <select
-            className={styles.layerSelect}
-            onChange={(event) => setLayerMode(event.target.value as LayerMode)}
-            value={layerMode}
-          >
-            <option value="standard">Standard</option>
-            <option value="orthophoto">Ortofoto</option>
-          </select>
-          <button
-            className={styles.refreshButton}
-            onClick={() => {
-              void loadData();
-            }}
-            type="button"
-          >
-            Aggiorna
-          </button>
+        <div className={styles.legendWrap}>
+          <ul className={styles.legendInline}>
+            {statusOptions
+              .filter((item) => item.value !== "all")
+              .map((item) => (
+                <li key={item.value}>
+                  <span className={styles.legendItem}>
+                    <span
+                      className={styles.legendDot}
+                      style={{ backgroundColor: getStatusColor(item.value) }}
+                    />
+                    {item.label}
+                  </span>
+                </li>
+              ))}
+          </ul>
+          <span className={styles.legendMeta}>
+            Refresh:{" "}
+            {lastRefreshAt ? formatFixTimestamp(lastRefreshAt) : "…"}
+          </span>
         </div>
       </header>
 
-      <section className={styles.legendBar}>
-        {statusOptions
-          .filter((item) => item.value !== "all")
-          .map((item) => (
-            <span className={styles.legendItem} key={item.value}>
-              <span
-                className={styles.legendDot}
-                style={{ backgroundColor: getStatusColor(item.value) }}
-              />
-              {item.label}
-            </span>
-          ))}
-        <span className={styles.legendMeta}>
-          Ultimo refresh:{" "}
-          {lastRefreshAt ? formatFixTimestamp(lastRefreshAt) : "In attesa"}
-        </span>
-      </section>
-
       <section className={styles.mapShell}>
-        <PatrolLiveMap
-          focusedPatrol={focusedPatrol}
-          layerMode={layerMode}
-          onFocusHandled={() => setFocusedPatrol(null)}
-          onForceLogout={() => {}}
-          onSelectPatrol={(patrol) => {
-            setSelectedSessionId(patrol.sessionId);
-            setFocusedPatrol(patrol);
-          }}
-          patrols={patrols}
-          selectedSessionId={selectedSessionId}
-          waypoints={waypoints}
-        />
+        <div className={styles.mapStageFill} ref={mapFullscreenTargetRef}>
+          <PatrolLiveMap
+            focusedPatrol={focusedPatrol}
+            layerMode={layerMode}
+            onFocusHandled={() => setFocusedPatrol(null)}
+            onForceLogout={() => {}}
+            onSelectPatrol={(patrol) => {
+              setSelectedSessionId(patrol.sessionId);
+              setFocusedPatrol(patrol);
+            }}
+            patrols={patrols}
+            selectedSessionId={selectedSessionId}
+            waypoints={waypoints}
+          />
+        </div>
       </section>
 
       <section className={styles.bottomStrip}>

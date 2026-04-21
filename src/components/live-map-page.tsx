@@ -44,6 +44,46 @@ import {
   type TacticalWaypoint,
 } from "@/lib/live-patrols";
 
+function normalizePatrolStatusForFilter(status: string): string {
+  return (status ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, "_")
+    .replace(/\s+/g, "_");
+}
+
+/** Scorre ogni contenitore con overflow-y finché il target resta nel viewport del contenitore. */
+function scrollElementIntoAncestorChain(element: HTMLElement, padding = 14) {
+  const run = () => {
+    let parent = element.parentElement;
+    while (parent && parent !== document.documentElement) {
+      const style = window.getComputedStyle(parent);
+      const oy = style.overflowY;
+      const scrollable =
+        parent.scrollHeight > parent.clientHeight + 2 &&
+        (oy === "auto" || oy === "scroll" || oy === "overlay");
+
+      if (scrollable) {
+        const er = element.getBoundingClientRect();
+        const pr = parent.getBoundingClientRect();
+        const topGap = er.top - pr.top - padding;
+        const bottomGap = er.bottom - pr.bottom + padding;
+
+        if (topGap < 0) {
+          parent.scrollTop += topGap;
+        } else if (bottomGap > 0) {
+          parent.scrollTop += bottomGap;
+        }
+      }
+
+      parent = parent.parentElement;
+    }
+  };
+
+  window.requestAnimationFrame(run);
+  window.setTimeout(run, 100);
+}
+
 const PatrolLiveMap = dynamic(() => import("@/components/patrol-live-map"), {
   ssr: false,
 });
@@ -197,43 +237,32 @@ export function LiveMapPage() {
   const mainScrollRef = useRef<HTMLElement | null>(null);
 
   const scrollToWaypointPanel = useCallback(() => {
-    const panel = waypointPanelRef.current;
-    const side = sidePanelsScrollRef.current;
-    const mainEl =
-      mainScrollRef.current ??
-      (panel?.closest("main") as HTMLElement | null | undefined);
+    const panel =
+      waypointPanelRef.current ??
+      (typeof document !== "undefined"
+        ? (document.getElementById(
+            "waypoint-tactical-panel",
+          ) as HTMLElement | null)
+        : null);
     if (!panel) {
       return;
     }
 
-    const pad = 10;
-
-    if (side) {
-      const sideRect = side.getBoundingClientRect();
-      const panelRect = panel.getBoundingClientRect();
-      const nextTop =
-        panelRect.top - sideRect.top + side.scrollTop - pad;
-      side.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
-    } else {
-      panel.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-
-    requestAnimationFrame(() => {
-      if (!mainEl) {
-        return;
-      }
-      const dy =
-        panel.getBoundingClientRect().top -
-        mainEl.getBoundingClientRect().top -
-        pad;
-      if (Math.abs(dy) > 8) {
-        mainEl.scrollBy({ top: dy, behavior: "smooth" });
-      }
+    panel.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+      inline: "nearest",
     });
+
+    scrollElementIntoAncestorChain(panel, 14);
+
+    window.setTimeout(() => {
+      scrollElementIntoAncestorChain(panel, 14);
+    }, 120);
 
     window.setTimeout(() => {
       panel.focus({ preventScroll: true });
-    }, 450);
+    }, 500);
   }, []);
 
   const isViewer = session?.role === "viewer";
@@ -338,7 +367,7 @@ export function LiveMapPage() {
               supabase
                 .from("patrol_sessions")
                 .select(
-                  "id, is_online, login_at, logout_at, last_status_at, current_status, patrols!inner(patrol_code, patrol_name), missions(mission_name)",
+                  "id, exercise_id, patrol_id, mission_id, is_online, login_at, logout_at, last_status_at, current_status, patrols!inner(patrol_code, patrol_name), missions(mission_name)",
                 )
                 .order("login_at", { ascending: false })
                 .limit(100),
@@ -391,10 +420,6 @@ export function LiveMapPage() {
         loadWarnings.push(`patrol_status_events: ${statusEventsResult.error.message}`);
       }
 
-      if (loadWarnings.length > 0) {
-        console.warn("[APRS Patrol Admin] loadData avvisi parziali:", loadWarnings);
-      }
-
       const nextPatrols: LivePatrol[] = (
         patrolResult.error ? [] : patrolResult.data ?? []
       ).map((row) => ({
@@ -413,6 +438,53 @@ export function LiveMapPage() {
         lastFixAt: (row.last_fix_at as string | null) ?? null,
         lastStatusAt: row.last_status_at as string,
       }));
+
+      const fallbackPatrolsFromSessions: LivePatrol[] = (
+        sessionsResult.error ? [] : sessionsResult.data ?? []
+      )
+        .filter((row) => Boolean(row.is_online))
+        .map((row) => {
+          const patrolData = row.patrols as
+            | { patrol_code?: string; patrol_name?: string }
+            | Array<{ patrol_code?: string; patrol_name?: string }>
+            | null;
+          const missionData = row.missions as
+            | { mission_name?: string }
+            | Array<{ mission_name?: string }>
+            | null;
+
+          const patrol = Array.isArray(patrolData) ? patrolData[0] : patrolData;
+          const mission = Array.isArray(missionData) ? missionData[0] : missionData;
+
+          return {
+            sessionId: row.id as string,
+            exerciseId: row.exercise_id as string,
+            patrolId: row.patrol_id as string,
+            patrolCode: patrol?.patrol_code ?? "n/d",
+            patrolName: patrol?.patrol_name ?? "n/d",
+            missionId: (row.mission_id as string | null) ?? null,
+            missionName: (mission?.mission_name as string | null) ?? null,
+            status: String(row.current_status ?? "start_mission"),
+            isOnline: Boolean(row.is_online),
+            lastLatitude: null,
+            lastLongitude: null,
+            lastAccuracy: null,
+            lastFixAt: null,
+            lastStatusAt: row.last_status_at as string,
+          };
+        });
+
+      let patrolsForState = nextPatrols;
+      if (patrolsForState.length === 0 && fallbackPatrolsFromSessions.length > 0) {
+        patrolsForState = fallbackPatrolsFromSessions;
+        loadWarnings.push(
+          "Lista pattuglie: uso `patrol_sessions` perché `active_patrol_summaries` non ha restituito righe (vista o RLS). Coordinate GPS possono mancare.",
+        );
+      }
+
+      if (loadWarnings.length > 0) {
+        console.warn("[APRS Patrol Admin] loadData avvisi parziali:", loadWarnings);
+      }
 
       const nextMissions = Array.from(
         new Set(
@@ -640,7 +712,7 @@ export function LiveMapPage() {
         ];
       }
 
-      setPatrols(nextPatrols);
+      setPatrols(patrolsForState);
       setMissions(nextMissions);
       setRegistryItems(nextRegistry);
       setAdminAccessEvents(nextAccessEvents);
@@ -648,7 +720,7 @@ export function LiveMapPage() {
       setExerciseOptions(nextExercises);
       setBackendMode("live");
       const baseLiveMessage =
-        nextPatrols.length > 0
+        patrolsForState.length > 0
           ? "Feed live caricato da Supabase. Marker e lista sono aggiornati dal backend."
           : "Connessione live attiva: nessuna pattuglia nel riepilogo operativo.";
       setMessage(
@@ -758,22 +830,64 @@ export function LiveMapPage() {
     return () => window.clearInterval(timer);
   }, [authChecked, loadData, session]);
 
+  const missionFilterOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const mission of missions) {
+      const trimmed = mission.trim();
+      if (trimmed.length > 0) {
+        set.add(trimmed);
+      }
+    }
+    for (const patrol of patrols) {
+      const trimmed = (patrol.missionName ?? "").trim();
+      if (trimmed.length > 0) {
+        set.add(trimmed);
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "it"));
+  }, [missions, patrols]);
+
+  useEffect(() => {
+    if (missionFilter === "all" || missionFilter === "__none__") {
+      return;
+    }
+    if (!missionFilterOptions.includes(missionFilter)) {
+      setMissionFilter("all");
+    }
+  }, [missionFilter, missionFilterOptions]);
+
   const filteredPatrols = useMemo(() => {
     return patrols.filter((patrol) => {
+      const patrolStatus = (patrol.status ?? "").trim();
       const matchesStatus =
-        statusFilter === "all" ? true : patrol.status === statusFilter;
-      const matchesMission =
-        missionFilter === "all" ? true : patrol.missionName === missionFilter;
-      const query = searchTerm.trim().toLowerCase();
-      const matchesSearch =
-        query.length === 0
+        statusFilter === "all"
           ? true
-          : patrol.patrolCode.toLowerCase().includes(query) ||
-            patrol.patrolName.toLowerCase().includes(query);
+          : normalizePatrolStatusForFilter(patrolStatus) ===
+            normalizePatrolStatusForFilter(statusFilter);
+
+      const missionKey = (patrol.missionName ?? "").trim();
+      const matchesMission =
+        missionFilter === "all"
+          ? true
+          : missionFilter === "__none__"
+            ? missionKey.length === 0
+            : missionKey === missionFilter;
+
+      const query = searchTerm.trim().toLowerCase();
+      const code = (patrol.patrolCode ?? "").toLowerCase();
+      const name = (patrol.patrolName ?? "").toLowerCase();
+      const matchesSearch =
+        query.length === 0 ? true : code.includes(query) || name.includes(query);
 
       return matchesStatus && matchesMission && matchesSearch;
     });
   }, [missionFilter, patrols, searchTerm, statusFilter]);
+
+  const resetLiveMapFilters = useCallback(() => {
+    setStatusFilter("all");
+    setMissionFilter("all");
+    setSearchTerm("");
+  }, []);
 
   const selectedPatrol =
     filteredPatrols.find((patrol) => patrol.sessionId === selectedSessionId) ??
@@ -1643,7 +1757,21 @@ export function LiveMapPage() {
   }
 
   function openFullscreenMap() {
-    window.open("/map-fullscreen", "_blank,noreferrer");
+    const sw =
+      typeof window.screen?.availWidth === "number"
+        ? window.screen.availWidth
+        : 1600;
+    const sh =
+      typeof window.screen?.availHeight === "number"
+        ? window.screen.availHeight
+        : 900;
+    const width = Math.min(sw - 48, 1920);
+    const height = Math.min(sh - 48, 1200);
+    window.open(
+      `/map-fullscreen`,
+      "_blank",
+      `width=${width},height=${height},left=24,top=24,noopener,noreferrer`,
+    );
   }
 
   async function handleBackendLogin() {
@@ -2208,7 +2336,8 @@ export function LiveMapPage() {
               onChange={(event) => setMissionFilter(event.target.value)}
             >
               <option value="all">Tutte le missioni</option>
-              {missions.map((mission) => (
+              <option value="__none__">Senza missione</option>
+              {missionFilterOptions.map((mission) => (
                 <option key={mission} value={mission}>
                   {mission}
                 </option>
@@ -2226,17 +2355,25 @@ export function LiveMapPage() {
             />
           </div>
 
-          <div className={styles.toolbarCard}>
-            <label>Waypoint ▲ / scala</label>
+          <div
+            className={`${styles.toolbarCard} ${styles.toolbarCardWaypoint}`}
+          >
+            <label
+              htmlFor="waypoint-panel-scroll-btn"
+              title="Marcatori waypoint sulla mappa (▲); scala cartografica in basso a sinistra."
+            >
+              Waypoint ▲ / scala
+            </label>
             <button
               className={styles.mapAction}
+              id="waypoint-panel-scroll-btn"
               type="button"
               onClick={scrollToWaypointPanel}
             >
               Vai al pannello waypoint
             </button>
             <p className={styles.toolbarHint}>
-              ▲ gialli sulla mappa · scala in basso a sinistra.
+              ▲ sulla mappa (etichetta gialla) · scala in basso a sinistra.
             </p>
           </div>
         </section>
@@ -2303,146 +2440,16 @@ export function LiveMapPage() {
             ref={sidePanelsScrollRef}
             className={styles.sidePanels}
           >
-            <section className={styles.panelCard}>
-              <div className={styles.panelHeader}>
-                <div className={styles.panelHeaderTitle}>
-                  <h2>Quadro rapido</h2>
-                  <p>Stato backend, pattuglie online e dettaglio selezione.</p>
-                </div>
-              </div>
-
-              <div className={styles.stats}>
-                <div className={styles.statCard}>
-                  <span className={styles.statLabel}>Pattuglie online</span>
-                  <strong className={styles.statValue}>{onlineCount}</strong>
-                  <span className={styles.statMeta}>
-                    Sessioni online lette da `active_patrol_summaries`.
-                  </span>
-                </div>
-                <div className={styles.statCard}>
-                  <span className={styles.statLabel}>Fix disponibili</span>
-                  <strong className={styles.statValue}>{withFixCount}</strong>
-                  <span className={styles.statMeta}>
-                    Marker mostrati in mappa con coordinate valide.
-                  </span>
-                </div>
-                <div className={styles.statCard}>
-                  <span className={styles.statLabel}>Missioni visibili</span>
-                  <strong className={styles.statValue}>{missionCount}</strong>
-                  <span className={styles.statMeta}>
-                    Filtri missione ricavati dal backend o dal fallback mock.
-                  </span>
-                </div>
-                <div className={styles.statCard}>
-                  <span className={styles.statLabel}>Feed backend</span>
-                  <strong className={styles.statValue}>
-                    {backendMode === "live" ? "LIVE" : "MOCK"}
-                  </strong>
-                  <span className={styles.statMeta}>
-                    Polling automatico ogni 20 secondi.
-                  </span>
-                </div>
-              </div>
-
-              <div className={styles.statusPanelBody}>
-                <div className={styles.messageBox}>{message}</div>
-                <div style={{ height: 12 }} />
-
-                {selectedPatrol ? (
-                  <div className={styles.selectedCard}>
-                    <div className={styles.selectedTop}>
-                      <div className={styles.selectedTitle}>
-                        <span className={styles.selectedCode}>
-                          {selectedPatrol.patrolCode}
-                        </span>
-                        <strong className={styles.selectedName}>
-                          {selectedPatrol.patrolName}
-                        </strong>
-                      </div>
-                      <span
-                        className={styles.statusPill}
-                        style={{
-                          backgroundColor: getStatusColor(selectedPatrol.status),
-                        }}
-                      >
-                        {getStatusLabel(selectedPatrol.status)}
-                      </span>
-                    </div>
-
-                    <div className={styles.detailGrid}>
-                      <div className={styles.detailItem}>
-                        <span className={styles.detailItemLabel}>Missione</span>
-                        <span className={styles.detailItemValue}>
-                          {selectedPatrol.missionName ?? "Missione non assegnata"}
-                        </span>
-                      </div>
-                      <div className={styles.detailItem}>
-                        <span className={styles.detailItemLabel}>Ultimo fix</span>
-                        <span className={styles.detailItemValue}>
-                          {formatFixTimestamp(selectedPatrol.lastFixAt)}
-                        </span>
-                      </div>
-                      <div className={styles.detailItem}>
-                        <span className={styles.detailItemLabel}>
-                          Accuratezza
-                        </span>
-                        <span className={styles.detailItemValue}>
-                          {selectedPatrol.lastAccuracy !== null
-                            ? `${selectedPatrol.lastAccuracy.toFixed(0)} m`
-                            : "n/d"}
-                        </span>
-                      </div>
-                      <div className={styles.detailItem}>
-                        <span className={styles.detailItemLabel}>Coordinate</span>
-                        <span className={styles.detailItemValue}>
-                          {hasCoordinates(selectedPatrol)
-                            ? `${selectedPatrol.lastLatitude!.toFixed(5)}, ${selectedPatrol.lastLongitude!.toFixed(5)}`
-                            : "GPS in acquisizione"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className={styles.selectedActions}>
-                      <button
-                        className={styles.mapAction}
-                        type="button"
-                        onClick={() => setFocusedPatrol(selectedPatrol)}
-                      >
-                        Centra su mappa
-                      </button>
-                      <button className={styles.ghostButton} type="button">
-                        Apri dettaglio
-                      </button>
-                      <button
-                        className={styles.logoutButton}
-                        type="button"
-                        onClick={() => {
-                          void handleForceLogout(selectedPatrol);
-                        }}
-                      >
-                        Force logout
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className={styles.emptyState}>
-                    Nessuna pattuglia corrisponde ai filtri attuali.
-                  </div>
-                )}
-              </div>
-            </section>
-
             <section
               ref={waypointPanelRef}
               className={`${styles.panelCard} ${styles.waypointPanelCard} ${styles.waypointPanelAnchor}`}
               id="waypoint-tactical-panel"
-              style={{ order: -1 }}
               tabIndex={-1}
             >
               <div className={styles.panelHeader}>
                 <div className={styles.panelHeaderTitle}>
                   <h2>Waypoint tattici</h2>
-                  <p>
+                  <p className={styles.waypointPanelHeaderDesc}>
                     Stesso database dell&apos;app TOC (
                     <code>tactical_map_points</code>): lettura realtime; creazione /
                     modifica da PC con profilo admin.
@@ -2634,6 +2641,135 @@ export function LiveMapPage() {
             <section className={styles.panelCard}>
               <div className={styles.panelHeader}>
                 <div className={styles.panelHeaderTitle}>
+                  <h2>Quadro rapido</h2>
+                  <p>Stato backend, pattuglie online e dettaglio selezione.</p>
+                </div>
+              </div>
+
+              <div className={styles.stats}>
+                <div className={styles.statCard}>
+                  <span className={styles.statLabel}>Pattuglie online</span>
+                  <strong className={styles.statValue}>{onlineCount}</strong>
+                  <span className={styles.statMeta}>
+                    Sessioni online lette da `active_patrol_summaries`.
+                  </span>
+                </div>
+                <div className={styles.statCard}>
+                  <span className={styles.statLabel}>Fix disponibili</span>
+                  <strong className={styles.statValue}>{withFixCount}</strong>
+                  <span className={styles.statMeta}>
+                    Marker mostrati in mappa con coordinate valide.
+                  </span>
+                </div>
+                <div className={styles.statCard}>
+                  <span className={styles.statLabel}>Missioni visibili</span>
+                  <strong className={styles.statValue}>{missionCount}</strong>
+                  <span className={styles.statMeta}>
+                    Filtri missione ricavati dal backend o dal fallback mock.
+                  </span>
+                </div>
+                <div className={styles.statCard}>
+                  <span className={styles.statLabel}>Feed backend</span>
+                  <strong className={styles.statValue}>
+                    {backendMode === "live" ? "LIVE" : "MOCK"}
+                  </strong>
+                  <span className={styles.statMeta}>
+                    Polling automatico ogni 20 secondi.
+                  </span>
+                </div>
+              </div>
+
+              <div className={styles.statusPanelBody}>
+                <div className={styles.messageBox}>{message}</div>
+                <div style={{ height: 12 }} />
+
+                {selectedPatrol ? (
+                  <div className={styles.selectedCard}>
+                    <div className={styles.selectedTop}>
+                      <div className={styles.selectedTitle}>
+                        <span className={styles.selectedCode}>
+                          {selectedPatrol.patrolCode}
+                        </span>
+                        <strong className={styles.selectedName}>
+                          {selectedPatrol.patrolName}
+                        </strong>
+                      </div>
+                      <span
+                        className={styles.statusPill}
+                        style={{
+                          backgroundColor: getStatusColor(selectedPatrol.status),
+                        }}
+                      >
+                        {getStatusLabel(selectedPatrol.status)}
+                      </span>
+                    </div>
+
+                    <div className={styles.detailGrid}>
+                      <div className={styles.detailItem}>
+                        <span className={styles.detailItemLabel}>Missione</span>
+                        <span className={styles.detailItemValue}>
+                          {selectedPatrol.missionName ?? "Missione non assegnata"}
+                        </span>
+                      </div>
+                      <div className={styles.detailItem}>
+                        <span className={styles.detailItemLabel}>Ultimo fix</span>
+                        <span className={styles.detailItemValue}>
+                          {formatFixTimestamp(selectedPatrol.lastFixAt)}
+                        </span>
+                      </div>
+                      <div className={styles.detailItem}>
+                        <span className={styles.detailItemLabel}>
+                          Accuratezza
+                        </span>
+                        <span className={styles.detailItemValue}>
+                          {selectedPatrol.lastAccuracy !== null
+                            ? `${selectedPatrol.lastAccuracy.toFixed(0)} m`
+                            : "n/d"}
+                        </span>
+                      </div>
+                      <div className={styles.detailItem}>
+                        <span className={styles.detailItemLabel}>Coordinate</span>
+                        <span className={styles.detailItemValue}>
+                          {hasCoordinates(selectedPatrol)
+                            ? `${selectedPatrol.lastLatitude!.toFixed(5)}, ${selectedPatrol.lastLongitude!.toFixed(5)}`
+                            : "GPS in acquisizione"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className={styles.selectedActions}>
+                      <button
+                        className={styles.mapAction}
+                        type="button"
+                        onClick={() => setFocusedPatrol(selectedPatrol)}
+                      >
+                        Centra su mappa
+                      </button>
+                      <button className={styles.ghostButton} type="button">
+                        Apri dettaglio
+                      </button>
+                      <button
+                        className={styles.logoutButton}
+                        type="button"
+                        onClick={() => {
+                          void handleForceLogout(selectedPatrol);
+                        }}
+                      >
+                        Force logout
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={styles.emptyState}>
+                    Nessuna pattuglia corrisponde ai filtri attuali.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className={styles.panelCard}>
+              <div className={styles.panelHeader}>
+                <div className={styles.panelHeaderTitle}>
                   <h2>Elenco pattuglie live</h2>
                   <p>Lista sincronizzata con la mappa e pronta per il CRUD reale.</p>
                 </div>
@@ -2642,7 +2778,23 @@ export function LiveMapPage() {
               <div className={styles.listBody}>
                 {filteredPatrols.length === 0 ? (
                   <div className={styles.emptyState}>
-                    Nessuna pattuglia disponibile con i filtri selezionati.
+                    {patrols.length > 0 ? (
+                      <>
+                        Nessuna pattuglia corrisponde ai filtri attuali (
+                        {patrols.length} in backend).
+                        <div style={{ marginTop: 12 }}>
+                          <button
+                            className={styles.mapAction}
+                            type="button"
+                            onClick={resetLiveMapFilters}
+                          >
+                            Reimposta filtri (stato, missione, ricerca)
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      "Nessuna pattuglia nel riepilogo operativo."
+                    )}
                   </div>
                 ) : (
                   filteredPatrols.map((patrol) => (

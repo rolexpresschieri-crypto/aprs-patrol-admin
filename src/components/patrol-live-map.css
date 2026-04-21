@@ -83,19 +83,20 @@
   transform: translateY(2px);
 }
 
+/* Testo waypoint come app mobile (giallo ad alto contrasto). */
 .tactical-waypoint-caption {
   display: block;
-  max-width: 84px;
+  max-width: 92px;
   font-size: 10px;
   font-weight: 800;
   line-height: 1.15;
   text-align: center;
-  color: #ffffff;
+  color: #fff100;
   text-shadow:
-    -1px -1px 0 #1a1a1a,
-    1px -1px 0 #1a1a1a,
-    -1px 1px 0 #1a1a1a,
-    1px 1px 0 #1a1a1a,
-    0 0 5px rgba(0, 0, 0, 0.85);
+    -1px -1px 0 #101010,
+    1px -1px 0 #101010,
+    -1px 1px 0 #101010,
+    1px 1px 0 #101010,
+    0 0 6px rgba(0, 0, 0, 0.92);
   word-break: break-word;
 }
