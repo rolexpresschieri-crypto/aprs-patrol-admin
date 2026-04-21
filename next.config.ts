@@ -42,6 +42,28 @@ const nextConfig: NextConfig = {
     root: configDir,
   },
   ...(distDir ? { distDir } : {}),
+  async headers() {
+    return [
+      {
+        source: "/",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "private, no-store, max-age=0, must-revalidate",
+          },
+        ],
+      },
+      {
+        source: "/map-fullscreen",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "private, no-store, max-age=0, must-revalidate",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
