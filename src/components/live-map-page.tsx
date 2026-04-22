@@ -892,6 +892,70 @@ export function LiveMapPage() {
     }
   }
 
+  async function handleSendOperationalPush(patrol: LivePatrol) {
+    if (!patrol.isOnline || !patrol.sessionId) {
+      setMessage("La pattuglia non è online: nessun invio push.");
+      return;
+    }
+
+    if (!session) {
+      setMessage("Accedi come TOC (admin o viewer) per inviare una notifica push.");
+      return;
+    }
+
+    const bodyText = window.prompt(
+      "Testo della notifica inviata al dispositivo pattuglia:",
+      "Messaggio dal Tactical Operations Center.",
+    );
+
+    if (bodyText === null) {
+      return;
+    }
+
+    if (!bodyText.trim()) {
+      setMessage("Testo vuoto: invio push annullato.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/send-push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session,
+          sessionId: patrol.sessionId,
+          title: `TOC — ${patrol.patrolCode}`,
+          body: bodyText.trim(),
+        }),
+      });
+
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        ok?: boolean;
+        messageId?: string;
+        code?: string;
+      };
+
+      if (!res.ok) {
+        throw new Error(data.error ?? `Errore server ${res.status}`);
+      }
+
+      if (data.ok) {
+        setMessage(
+          `Push inviata a ${patrol.patrolCode} (${patrol.patrolName}). ID messaggio: ${data.messageId ?? "n/d"}.`,
+        );
+      }
+    } catch (error) {
+      const errorText =
+        error instanceof Error ? error.message : "Errore sconosciuto.";
+      setMessage(`Invio push non riuscito: ${errorText}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function resetPatrolForm() {
     setEditingPatrolId(null);
     setPatrolCodeInput("");
@@ -2325,6 +2389,15 @@ export function LiveMapPage() {
                         Apri dettaglio
                       </button>
                       <button
+                        className={styles.mapAction}
+                        type="button"
+                        onClick={() => {
+                          void handleSendOperationalPush(selectedPatrol);
+                        }}
+                      >
+                        Notifica push
+                      </button>
+                      <button
                         className={styles.logoutButton}
                         type="button"
                         onClick={() => {
@@ -2454,6 +2527,15 @@ export function LiveMapPage() {
                         </button>
                         <button className={styles.ghostButton} type="button">
                           Dettaglio
+                        </button>
+                        <button
+                          className={styles.mapAction}
+                          type="button"
+                          onClick={() => {
+                            void handleSendOperationalPush(patrol);
+                          }}
+                        >
+                          Push
                         </button>
                         <button
                           className={styles.logoutButton}
