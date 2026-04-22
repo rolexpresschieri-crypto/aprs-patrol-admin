@@ -2247,6 +2247,18 @@ export function LiveMapPage() {
                 >
                   Apri su secondo schermo
                 </button>
+                {selectedPatrol ? (
+                  <button
+                    className={styles.mapAction}
+                    type="button"
+                    title={`Invia FCM a ${selectedPatrol.patrolCode} — ${selectedPatrol.patrolName}`}
+                    onClick={() => {
+                      void handleSendOperationalPush(selectedPatrol);
+                    }}
+                  >
+                    Notifica push
+                  </button>
+                ) : null}
               </div>
             </div>
 
@@ -2282,7 +2294,10 @@ export function LiveMapPage() {
               <div className={styles.panelHeader}>
                 <div className={styles.panelHeaderTitle}>
                   <h2>Quadro rapido</h2>
-                  <p>Stato backend, pattuglie online e dettaglio selezione.</p>
+                  <p>
+                    Stato backend e pattuglie online. Scorri in basso per il dettaglio
+                    pattuglia (Notifica push, Force logout) e per l&apos;elenco live.
+                  </p>
                 </div>
               </div>
 
