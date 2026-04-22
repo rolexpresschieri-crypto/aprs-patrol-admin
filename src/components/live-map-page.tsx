@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import {
@@ -50,38 +51,6 @@ function normalizePatrolStatusForFilter(status: string): string {
     .toLowerCase()
     .replace(/-/g, "_")
     .replace(/\s+/g, "_");
-}
-
-/** Scorre ogni contenitore con overflow-y finché il target resta nel viewport del contenitore. */
-function scrollElementIntoAncestorChain(element: HTMLElement, padding = 14) {
-  const run = () => {
-    let parent = element.parentElement;
-    while (parent && parent !== document.documentElement) {
-      const style = window.getComputedStyle(parent);
-      const oy = style.overflowY;
-      const scrollable =
-        parent.scrollHeight > parent.clientHeight + 2 &&
-        (oy === "auto" || oy === "scroll" || oy === "overlay");
-
-      if (scrollable) {
-        const er = element.getBoundingClientRect();
-        const pr = parent.getBoundingClientRect();
-        const topGap = er.top - pr.top - padding;
-        const bottomGap = er.bottom - pr.bottom + padding;
-
-        if (topGap < 0) {
-          parent.scrollTop += topGap;
-        } else if (bottomGap > 0) {
-          parent.scrollTop += bottomGap;
-        }
-      }
-
-      parent = parent.parentElement;
-    }
-  };
-
-  window.requestAnimationFrame(run);
-  window.setTimeout(run, 100);
 }
 
 const PatrolLiveMap = dynamic(() => import("@/components/patrol-live-map"), {
@@ -232,38 +201,8 @@ export function LiveMapPage() {
   const [waypointFormError, setWaypointFormError] = useState<string | null>(null);
   const [waypointFeedError, setWaypointFeedError] = useState<string | null>(null);
 
-  const waypointPanelRef = useRef<HTMLElement | null>(null);
   const sidePanelsScrollRef = useRef<HTMLDivElement | null>(null);
   const mainScrollRef = useRef<HTMLElement | null>(null);
-
-  const scrollToWaypointPanel = useCallback(() => {
-    const panel =
-      waypointPanelRef.current ??
-      (typeof document !== "undefined"
-        ? (document.getElementById(
-            "waypoint-tactical-panel",
-          ) as HTMLElement | null)
-        : null);
-    if (!panel) {
-      return;
-    }
-
-    panel.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-      inline: "nearest",
-    });
-
-    scrollElementIntoAncestorChain(panel, 14);
-
-    window.setTimeout(() => {
-      scrollElementIntoAncestorChain(panel, 14);
-    }, 120);
-
-    window.setTimeout(() => {
-      panel.focus({ preventScroll: true });
-    }, 500);
-  }, []);
 
   const isViewer = session?.role === "viewer";
   const canEdit = session?.role === "admin";
@@ -2366,19 +2305,17 @@ export function LiveMapPage() {
             className={`${styles.toolbarCard} ${styles.toolbarCardWaypoint}`}
           >
             <label
-              htmlFor="waypoint-panel-scroll-btn"
               title="Marcatori waypoint sulla mappa (▲); scala cartografica in basso a sinistra."
             >
               Waypoint ▲ / scala
             </label>
-            <button
+            <Link
               className={styles.mapAction}
-              id="waypoint-panel-scroll-btn"
-              type="button"
-              onClick={scrollToWaypointPanel}
+              href="/waypoints"
+              id="waypoint-panel-fullscreen-link"
             >
               Vai al pannello waypoint
-            </button>
+            </Link>
             <p className={styles.toolbarHint}>
               ▲ sulla mappa (etichetta gialla) · scala in basso a sinistra.
             </p>
@@ -2448,7 +2385,6 @@ export function LiveMapPage() {
             className={styles.sidePanels}
           >
             <section
-              ref={waypointPanelRef}
               className={`${styles.panelCard} ${styles.waypointPanelCard} ${styles.waypointPanelAnchor}`}
               id="waypoint-tactical-panel"
               tabIndex={-1}

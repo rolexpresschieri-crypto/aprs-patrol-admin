@@ -1,0 +1,87 @@
+.root {
+  min-height: 100vh;
+  background: #06080f;
+  color: #edf2ff;
+  display: flex;
+  flex-direction: column;
+}
+
+.topBar {
+  flex-shrink: 0;
+  padding: 12px 18px;
+  border-bottom: 1px solid #1e2a4a;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.topBar h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.topActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: #14295d;
+  color: #e8eeff;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.backLink:hover {
+  background: #1a3575;
+  color: #fff;
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 18px 28px;
+  box-sizing: border-box;
+}
+
+.maxWidth {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.loginHint {
+  max-width: 520px;
+  margin: 48px auto;
+  padding: 24px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(20, 41, 93, 0.35);
+  line-height: 1.5;
+}
+
+.loginHint a {
+  color: #90caf9;
+}
+
+.toast {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(129, 199, 132, 0.45);
+  background: rgba(46, 125, 50, 0.2);
+  color: #c8e6c9;
+  font-size: 14px;
+}
