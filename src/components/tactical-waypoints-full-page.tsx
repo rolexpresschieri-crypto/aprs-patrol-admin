@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -50,6 +52,10 @@ function raceSupabaseBatch<T>(promise: Promise<T>, label: string): Promise<T> {
 }
 
 export function TacticalWaypointsFullPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const deepLinkEditDoneRef = useRef<string | null>(null);
+
   const [supabase, setSupabase] = useState<ReturnType<
     typeof getSupabaseBrowserClient
   >>(null);
@@ -239,6 +245,33 @@ export function TacticalWaypointsFullPage() {
       void supabase.removeChannel(channel);
     };
   }, [authChecked, refreshWaypointsOnly, session, supabase]);
+
+  useEffect(() => {
+    const editId = searchParams.get("edit");
+    if (!editId) {
+      deepLinkEditDoneRef.current = null;
+      return;
+    }
+    if (loading) {
+      return;
+    }
+    if (deepLinkEditDoneRef.current === editId) {
+      return;
+    }
+    const target = waypoints.find((w) => w.id === editId);
+    if (!target) {
+      return;
+    }
+    deepLinkEditDoneRef.current = editId;
+    setWaypointFormError(null);
+    setEditingWaypointId(target.id);
+    setWaypointExerciseId(target.exerciseId);
+    setWaypointLabel(target.label ?? "");
+    setWaypointLat(String(target.latitude));
+    setWaypointLon(String(target.longitude));
+    setWaypointAlt(target.altitudeM !== null ? String(target.altitudeM) : "");
+    router.replace("/waypoints", { scroll: false });
+  }, [loading, router, searchParams, waypoints]);
 
   function resetWaypointForm() {
     setEditingWaypointId(null);

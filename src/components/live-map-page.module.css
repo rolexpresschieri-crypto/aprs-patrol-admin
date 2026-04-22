@@ -80,10 +80,10 @@
   align-items: stretch;
 }
 
-/* Riga unica: altezza dalla mappa; align start evita “buchi” neri tra colonne su layout stretch. */
+/* Riga unica: colonne alla stessa altezza così la colonna destra può dare flex+scroll all’elenco pattuglie. */
 .mainGrid.mapMainGrid {
   grid-template-rows: auto;
-  align-items: start;
+  align-items: stretch;
 }
 
 .mapCardLive {
@@ -621,12 +621,32 @@
   min-height: 0;
   height: 100%;
   max-height: 100%;
-  overflow-y: auto;
   overflow-x: hidden;
+  overflow-y: hidden;
   align-items: stretch;
   align-self: stretch;
   padding-right: 4px;
   -webkit-overflow-scrolling: touch;
+}
+
+/* Elenco pattuglie: occupa lo spazio residuo sotto Quadro rapido, scroll interno. */
+.patrolListPanel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.patrolListScrollArea {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sidePanelFixed {
+  flex-shrink: 0;
 }
 
 .stats {

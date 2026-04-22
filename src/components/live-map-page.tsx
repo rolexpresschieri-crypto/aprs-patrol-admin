@@ -11,8 +11,8 @@ import {
   useMemo,
   useRef,
   useState,
-  type FormEvent,
 } from "react";
+import { useRouter } from "next/navigation";
 import {
   ADMIN_SESSION_STORAGE_KEY,
   normalizeAdminRole,
@@ -26,7 +26,6 @@ import {
   formatSessionDuration,
   formatTimelineStepDuration,
   formatTimeOnly,
-  formatWaypointTimestamp,
   getStatusColor,
   getStatusLabel,
   hasCoordinates,
@@ -35,9 +34,7 @@ import {
   mockPatrolRegistry,
   mockWaypoints,
   statusOptions,
-  tacticalWaypointSourceLabel,
   tacticalWaypointsFromRows,
-  type ExerciseOption,
   type LayerMode,
   type LivePatrol,
   type PatrolRegistryItem,
@@ -122,6 +119,7 @@ function raceSupabaseBatch<T>(promise: Promise<T>, label: string): Promise<T> {
 }
 
 export function LiveMapPage() {
+  const router = useRouter();
   const [supabase, setSupabase] = useState<ReturnType<
     typeof getSupabaseBrowserClient
   >>(null);
@@ -190,15 +188,7 @@ export function LiveMapPage() {
   const [adminsFormEnabled, setAdminsFormEnabled] = useState(true);
 
   const [waypoints, setWaypoints] = useState<TacticalWaypoint[]>([]);
-  const [exerciseOptions, setExerciseOptions] = useState<ExerciseOption[]>([]);
-  const [waypointExerciseId, setWaypointExerciseId] = useState("");
-  const [waypointLabel, setWaypointLabel] = useState("");
-  const [waypointLat, setWaypointLat] = useState("");
-  const [waypointLon, setWaypointLon] = useState("");
-  const [waypointAlt, setWaypointAlt] = useState("");
-  const [editingWaypointId, setEditingWaypointId] = useState<string | null>(null);
   const [waypointBusy, setWaypointBusy] = useState(false);
-  const [waypointFormError, setWaypointFormError] = useState<string | null>(null);
   const [waypointFeedError, setWaypointFeedError] = useState<string | null>(null);
 
   const sidePanelsScrollRef = useRef<HTMLDivElement | null>(null);
@@ -244,7 +234,6 @@ export function LiveMapPage() {
       setPatrols(mockPatrols);
       setMissions(["MISSIONE ALFA", "MISSIONE BRAVO", "MISSIONE CHARLIE"]);
       setWaypoints(mockWaypoints);
-      setExerciseOptions([]);
       setWaypointFeedError(null);
       setBackendMode("mock");
       setLastRefreshAt(new Date().toISOString());
@@ -582,33 +571,23 @@ export function LiveMapPage() {
       );
 
       let wpRes;
-      let exRes;
-      let activeExerciseRes;
 
       try {
-        [wpRes, exRes, activeExerciseRes] = await raceSupabaseBatch(
-          Promise.all([
+        wpRes = await raceSupabaseBatch(
+          Promise.resolve(
             supabase
               .from("tactical_map_points")
               .select("*")
               .order("created_at", { ascending: false })
               .limit(400),
-            supabase.from("exercises").select("id, title, is_active").order("title"),
-            supabase
-              .from("exercises")
-              .select("id, title")
-              .eq("is_active", true)
-              .maybeSingle(),
-          ]),
-          "Lettura waypoint ed esercitazioni",
+          ),
+          "Lettura waypoint",
         );
       } catch (batchErr) {
         const msg =
           batchErr instanceof Error ? batchErr.message : String(batchErr);
-        loadWarnings.push(`Waypoint/esercitazioni (saltato): ${msg}`);
+        loadWarnings.push(`Waypoint (saltato): ${msg}`);
         wpRes = { data: [], error: { message: msg } };
-        exRes = { data: [], error: null };
-        activeExerciseRes = { data: null, error: null };
       }
 
       if (!wpRes.error && wpRes.data) {
@@ -624,39 +603,11 @@ export function LiveMapPage() {
         }
       }
 
-      let nextExercises: ExerciseOption[] = [];
-      if (!exRes.error && exRes.data) {
-        nextExercises = exRes.data.map((row) => ({
-          id: row.id as string,
-          title: ((row.title as string) ?? "").trim() || "Esercitazione",
-          isActive: (row.is_active as boolean | null) ?? null,
-        }));
-      } else if (exRes.error) {
-        console.warn("exercises:", exRes.error.message);
-      }
-
-      if (
-        nextExercises.length === 0 &&
-        !activeExerciseRes.error &&
-        activeExerciseRes.data?.id
-      ) {
-        nextExercises = [
-          {
-            id: activeExerciseRes.data.id as string,
-            title:
-              (((activeExerciseRes.data.title as string) ?? "").trim() ||
-                "Esercitazione attiva"),
-            isActive: true,
-          },
-        ];
-      }
-
       setPatrols(patrolsForState);
       setMissions(nextMissions);
       setRegistryItems(nextRegistry);
       setAdminAccessEvents(nextAccessEvents);
       setSessionRecords(nextSessionRecords);
-      setExerciseOptions(nextExercises);
       setBackendMode("live");
       const baseLiveMessage =
         patrolsForState.length > 0
@@ -675,7 +626,6 @@ export function LiveMapPage() {
       setPatrols(mockPatrols);
       setMissions(["MISSIONE ALFA", "MISSIONE BRAVO", "MISSIONE CHARLIE"]);
       setWaypoints(mockWaypoints);
-      setExerciseOptions([]);
       setRegistryItems(mockPatrolRegistry);
       setAdminAccessEvents([]);
       setSessionRecords([]);
@@ -716,21 +666,6 @@ export function LiveMapPage() {
     }
     void loadData();
   }, [authChecked, loadData, session, supabase]);
-
-  useEffect(() => {
-    if (exerciseOptions.length === 0) {
-      return;
-    }
-
-    setWaypointExerciseId((prev) => {
-      if (prev && exerciseOptions.some((row) => row.id === prev)) {
-        return prev;
-      }
-
-      const active = exerciseOptions.find((row) => row.isActive);
-      return active?.id ?? exerciseOptions[0]!.id;
-    });
-  }, [exerciseOptions]);
 
   useEffect(() => {
     if (!authChecked || !supabase || !session) {
@@ -866,116 +801,6 @@ export function LiveMapPage() {
     return Array.from(new Set(adminAccessEvents.map((event) => event.adminCode))).sort();
   }, [adminAccessEvents]);
 
-  function resetWaypointForm() {
-    setEditingWaypointId(null);
-    setWaypointLabel("");
-    setWaypointLat("");
-    setWaypointLon("");
-    setWaypointAlt("");
-    setWaypointFormError(null);
-  }
-
-  function beginEditWaypoint(waypoint: TacticalWaypoint) {
-    setWaypointFormError(null);
-    setEditingWaypointId(waypoint.id);
-    setWaypointExerciseId(waypoint.exerciseId);
-    setWaypointLabel(waypoint.label ?? "");
-    setWaypointLat(String(waypoint.latitude));
-    setWaypointLon(String(waypoint.longitude));
-    setWaypointAlt(waypoint.altitudeM !== null ? String(waypoint.altitudeM) : "");
-  }
-
-  async function handleWaypointSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!supabase || !session) {
-      setWaypointFormError("Sessione non valida.");
-      return;
-    }
-
-    if (!canEdit) {
-      setWaypointFormError("Solo gli admin possono modificare i waypoint.");
-      return;
-    }
-
-    const latTrim = waypointLat.trim();
-    const lonTrim = waypointLon.trim();
-    if (!latTrim || !lonTrim) {
-      setWaypointFormError("Inserisci latitudine e longitudine.");
-      return;
-    }
-
-    const lat = Number(latTrim.replace(",", "."));
-    const lon = Number(lonTrim.replace(",", "."));
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      setWaypointFormError("Latitudine e longitudine devono essere numeri validi.");
-      return;
-    }
-
-    if (!waypointExerciseId) {
-      setWaypointFormError("Seleziona un'esercitazione.");
-      return;
-    }
-
-    const altTrim = waypointAlt.trim();
-    const altitudeParsed =
-      altTrim === "" ? null : Number(altTrim.replace(",", "."));
-
-    if (altitudeParsed !== null && !Number.isFinite(altitudeParsed)) {
-      setWaypointFormError("Quota non valida.");
-      return;
-    }
-
-    setWaypointBusy(true);
-    setWaypointFormError(null);
-
-    try {
-      if (editingWaypointId) {
-        const { error } = await supabase
-          .from("tactical_map_points")
-          .update({
-            exercise_id: waypointExerciseId,
-            latitude: lat,
-            longitude: lon,
-            altitude_m: altitudeParsed,
-            label: waypointLabel.trim() ? waypointLabel.trim() : null,
-          })
-          .eq("id", editingWaypointId);
-
-        if (error) {
-          throw error;
-        }
-
-        setMessage(`Waypoint aggiornato.`);
-      } else {
-        const { error } = await supabase.from("tactical_map_points").insert({
-          exercise_id: waypointExerciseId,
-          latitude: lat,
-          longitude: lon,
-          altitude_m: altitudeParsed,
-          label: waypointLabel.trim() ? waypointLabel.trim() : null,
-          created_by_admin_code: session.code,
-          source: "backoffice",
-        });
-
-        if (error) {
-          throw error;
-        }
-
-        setMessage("Nuovo waypoint salvato sul database.");
-      }
-
-      resetWaypointForm();
-      await refreshWaypointsOnly();
-    } catch (error) {
-      const errorText =
-        error instanceof Error ? error.message : "Errore sconosciuto.";
-      setWaypointFormError(errorText);
-    } finally {
-      setWaypointBusy(false);
-    }
-  }
-
   async function handleDeleteWaypointFromMap(waypoint: TacticalWaypoint) {
     if (!supabase || !canEdit) {
       setMessage("Eliminazione waypoint non consentita.");
@@ -991,7 +816,6 @@ export function LiveMapPage() {
     }
 
     setWaypointBusy(true);
-    setWaypointFormError(null);
 
     try {
       const { error } = await supabase
@@ -1003,16 +827,12 @@ export function LiveMapPage() {
         throw error;
       }
 
-      if (editingWaypointId === waypoint.id) {
-        resetWaypointForm();
-      }
-
       setMessage("Waypoint eliminato.");
       await refreshWaypointsOnly();
     } catch (error) {
       const errorText =
         error instanceof Error ? error.message : "Errore sconosciuto.";
-      setWaypointFormError(errorText);
+      setMessage(`Eliminazione waypoint: ${errorText}`);
     } finally {
       setWaypointBusy(false);
     }
@@ -1826,9 +1646,7 @@ export function LiveMapPage() {
     setLoginPassword("");
     setPatrols(mockPatrols);
     setWaypoints(mockWaypoints);
-    setExerciseOptions([]);
     setWaypointFeedError(null);
-    setWaypointFormError(null);
     setLastRefreshAt(null);
     setMessage(
       supabase
@@ -2317,8 +2135,18 @@ export function LiveMapPage() {
               Vai al pannello waypoint
             </Link>
             <p className={styles.toolbarHint}>
-              ▲ sulla mappa (etichetta gialla) · scala in basso a sinistra.
+              ▲ sulla mappa (etichetta gialla) · scala in basso a sinistra. Gestione elenco e
+              form: pagina dedicata.
             </p>
+            {waypointFeedError ? (
+              <p
+                className={styles.toolbarHint}
+                style={{ color: "#ffb74d", marginTop: 4 }}
+                role="alert"
+              >
+                {waypointFeedError}
+              </p>
+            ) : null}
           </div>
         </section>
         )}
@@ -2365,7 +2193,9 @@ export function LiveMapPage() {
                 layerMode={layerMode}
                 onDeleteWaypoint={handleDeleteWaypointFromMap}
                 onEditWaypoint={(waypoint) => {
-                  beginEditWaypoint(waypoint);
+                  router.push(
+                    `/waypoints?edit=${encodeURIComponent(waypoint.id)}`,
+                  );
                 }}
                 onFocusHandled={() => setFocusedPatrol(null)}
                 onForceLogout={handleForceLogout}
@@ -2384,202 +2214,7 @@ export function LiveMapPage() {
             ref={sidePanelsScrollRef}
             className={styles.sidePanels}
           >
-            <section
-              className={`${styles.panelCard} ${styles.waypointPanelCard} ${styles.waypointPanelAnchor}`}
-              id="waypoint-tactical-panel"
-              tabIndex={-1}
-            >
-              <div className={styles.panelHeader}>
-                <div className={styles.panelHeaderTitle}>
-                  <h2 className={styles.waypointPanelTitle}>Waypoint tattici</h2>
-                  <p className={styles.waypointPanelHeaderDesc}>
-                    Stesso database dell&apos;app TOC (
-                    <code>tactical_map_points</code>): lettura realtime; creazione /
-                    modifica da PC con profilo admin.
-                  </p>
-                </div>
-              </div>
-
-              <div className={styles.waypointPanelBody}>
-              <div className={styles.registryForm}>
-                <div className={styles.messageBox}>
-                  {waypoints.length} waypoint in elenco · Ultima fonte:
-                  sincronizzazione Supabase e canale Realtime.
-                </div>
-
-                {waypointFeedError ? (
-                  <div
-                    className={styles.messageBox}
-                    style={{ borderColor: "#ffa726", color: "#ffe0b2" }}
-                  >
-                    {waypointFeedError}
-                  </div>
-                ) : null}
-
-                {waypointFormError ? (
-                  <div className={styles.messageBox} style={{ borderColor: "#d91f2a" }}>
-                    {waypointFormError}
-                  </div>
-                ) : null}
-
-                {canEdit && supabase && exerciseOptions.length > 0 ? (
-                  <form noValidate onSubmit={handleWaypointSubmit}>
-                    <div className={styles.fieldGroup}>
-                      <label htmlFor="wp-exercise">Esercitazione</label>
-                      <select
-                        id="wp-exercise"
-                        value={waypointExerciseId}
-                        onChange={(event) => setWaypointExerciseId(event.target.value)}
-                      >
-                        {exerciseOptions.map((row) => (
-                          <option key={row.id} value={row.id}>
-                            {row.title}
-                            {row.isActive ? " (attiva)" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className={styles.fieldGroup}>
-                      <label htmlFor="wp-label">Etichetta</label>
-                      <input
-                        id="wp-label"
-                        placeholder="Es. CP nord / Obiettivo"
-                        value={waypointLabel}
-                        onChange={(event) => setWaypointLabel(event.target.value)}
-                      />
-                    </div>
-
-                    <div className={styles.formGrid}>
-                      <div className={styles.fieldGroup}>
-                        <label htmlFor="wp-lat">Latitudine</label>
-                        <input
-                          id="wp-lat"
-                          inputMode="decimal"
-                          placeholder="45.0703"
-                          value={waypointLat}
-                          onChange={(event) => setWaypointLat(event.target.value)}
-                        />
-                      </div>
-                      <div className={styles.fieldGroup}>
-                        <label htmlFor="wp-lon">Longitudine</label>
-                        <input
-                          id="wp-lon"
-                          inputMode="decimal"
-                          placeholder="7.6869"
-                          value={waypointLon}
-                          onChange={(event) => setWaypointLon(event.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className={styles.fieldGroup}>
-                      <label htmlFor="wp-alt">Quota (m, opzionale)</label>
-                      <input
-                        id="wp-alt"
-                        inputMode="decimal"
-                        placeholder="es. 320"
-                        value={waypointAlt}
-                        onChange={(event) => setWaypointAlt(event.target.value)}
-                      />
-                    </div>
-
-                    <div className={styles.formActions}>
-                      <button
-                        className={styles.mapAction}
-                        disabled={waypointBusy}
-                        type="submit"
-                      >
-                        {editingWaypointId ? "Salva modifiche" : "Aggiungi waypoint"}
-                      </button>
-                      {editingWaypointId ? (
-                        <button
-                          className={styles.ghostButton}
-                          disabled={waypointBusy}
-                          onClick={() => {
-                            resetWaypointForm();
-                          }}
-                          type="button"
-                        >
-                          Annulla modifica
-                        </button>
-                      ) : null}
-                    </div>
-                  </form>
-                ) : null}
-
-                {!canEdit ? (
-                  <div className={styles.emptyState}>
-                    Profilo viewer: puoi vedere waypoint e coordinate sulla mappa, ma non
-                    modificarli.
-                  </div>
-                ) : null}
-
-                {canEdit && supabase && exerciseOptions.length === 0 ? (
-                  <div className={styles.emptyState}>
-                    Nessuna esercitazione trovata su Supabase (`exercises`). Inserisci almeno
-                    una riga per poter creare waypoint dal backoffice.
-                  </div>
-                ) : null}
-
-                <div className={styles.listBody} style={{ marginTop: 12 }}>
-                  {waypoints.length === 0 ? (
-                    <div className={styles.emptyState}>Nessun waypoint registrato.</div>
-                  ) : (
-                    waypoints.map((waypoint) => (
-                      <article className={styles.listItem} key={waypoint.id}>
-                        <div className={styles.listRow}>
-                          <div className={styles.listIdentity}>
-                            <div className={styles.listIdentityTop}>
-                              <span className={styles.listCode}>
-                                {waypoint.label?.trim() || "Waypoint"}
-                              </span>
-                              <span className={styles.missionText}>
-                                {waypoint.latitude.toFixed(5)}, {waypoint.longitude.toFixed(5)}
-                                {waypoint.altitudeM !== null
-                                  ? ` · ${waypoint.altitudeM.toFixed(0)} m`
-                                  : ""}
-                              </span>
-                            </div>
-                            <span className={styles.missionText}>
-                              {tacticalWaypointSourceLabel(waypoint.source)} ·{" "}
-                              {formatWaypointTimestamp(waypoint.createdAt)}
-                              {waypoint.createdByAdminCode
-                                ? ` · ${waypoint.createdByAdminCode}`
-                                : ""}
-                            </span>
-                          </div>
-                          {canEdit && supabase ? (
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                              <button
-                                className={styles.inlineButton}
-                                disabled={waypointBusy}
-                                onClick={() => beginEditWaypoint(waypoint)}
-                                type="button"
-                              >
-                                Modifica
-                              </button>
-                              <button
-                                className={styles.inlineButton}
-                                disabled={waypointBusy}
-                                onClick={() => void handleDeleteWaypointFromMap(waypoint)}
-                                style={{ color: "#ff8a80" }}
-                                type="button"
-                              >
-                                Elimina
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-                      </article>
-                    ))
-                  )}
-                </div>
-              </div>
-              </div>
-            </section>
-
-            <section className={styles.panelCard}>
+            <section className={`${styles.panelCard} ${styles.sidePanelFixed}`}>
               <div className={styles.panelHeader}>
                 <div className={styles.panelHeaderTitle}>
                   <h2>Quadro rapido</h2>
@@ -2708,7 +2343,9 @@ export function LiveMapPage() {
               </div>
             </section>
 
-            <section className={styles.panelCard}>
+            <section
+              className={`${styles.panelCard} ${styles.patrolListPanel}`}
+            >
               <div className={styles.panelHeader}>
                 <div className={styles.panelHeaderTitle}>
                   <h2>Elenco pattuglie live</h2>
@@ -2716,7 +2353,7 @@ export function LiveMapPage() {
                 </div>
               </div>
 
-              <div className={styles.listBody}>
+              <div className={`${styles.listBody} ${styles.patrolListScrollArea}`}>
                 {filteredPatrols.length === 0 ? (
                   <div className={styles.emptyState}>
                     {patrols.length > 0 ? (
