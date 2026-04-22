@@ -2105,6 +2105,19 @@ export function LiveMapPage() {
             >
               Logout
             </button>
+            {adminView === "live-map" && selectedPatrol ? (
+              <button
+                className={styles.refreshButton}
+                title={`FCM verso ${selectedPatrol.patrolCode} — ${selectedPatrol.patrolName}`}
+                type="button"
+                disabled={loading}
+                onClick={() => {
+                  void handleSendOperationalPush(selectedPatrol);
+                }}
+              >
+                Notifica push
+              </button>
+            ) : null}
             <button
               className={styles.refreshButton}
               onClick={() => {
@@ -2247,18 +2260,6 @@ export function LiveMapPage() {
                 >
                   Apri su secondo schermo
                 </button>
-                {selectedPatrol ? (
-                  <button
-                    className={styles.mapAction}
-                    type="button"
-                    title={`Invia FCM a ${selectedPatrol.patrolCode} — ${selectedPatrol.patrolName}`}
-                    onClick={() => {
-                      void handleSendOperationalPush(selectedPatrol);
-                    }}
-                  >
-                    Notifica push
-                  </button>
-                ) : null}
               </div>
             </div>
 
