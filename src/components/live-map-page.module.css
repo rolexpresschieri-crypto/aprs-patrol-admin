@@ -532,10 +532,10 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
   max-width: 100%;
-  padding: 14px 12px;
+  padding: 18px 14px;
   border-radius: 12px;
   border: 2px solid rgba(255, 255, 255, 0.35);
   background: linear-gradient(165deg, #ff9f4a 0%, #ea580c 55%, #c2410c 100%);
@@ -546,12 +546,12 @@
 
 .tocBrandLine1,
 .tocBrandLine2 {
-  font-size: clamp(13px, 3.4vw, 17px);
+  font-size: clamp(18px, 4.8vw, 26px);
   font-weight: 900;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #0f172a;
-  line-height: 1.15;
+  line-height: 1.12;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
@@ -561,7 +561,7 @@
 
 .authCard .tocBrandLine1,
 .authCard .tocBrandLine2 {
-  font-size: clamp(14px, 3.8vw, 18px);
+  font-size: clamp(19px, 5.2vw, 28px);
 }
 
 .brandSubtext {

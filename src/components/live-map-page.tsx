@@ -83,9 +83,12 @@ type AdminView =
 type ExerciseCatalogItem = {
   id: string;
   title: string;
+  description: string;
   isActive: boolean;
   createdAt: string;
 };
+
+const MISSIONS_EXERCISE_STORAGE_KEY = "aprs_patrol_admin_missions_exercise_id";
 
 type MissionCatalogItem = {
   id: string;
@@ -227,6 +230,11 @@ export function LiveMapPage() {
   const [missionFormEnabled, setMissionFormEnabled] = useState(true);
   const [missionBusy, setMissionBusy] = useState(false);
   const [exerciseCatalog, setExerciseCatalog] = useState<ExerciseCatalogItem[]>([]);
+  const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
+  const [exerciseFormTitle, setExerciseFormTitle] = useState("");
+  const [exerciseFormDescription, setExerciseFormDescription] = useState("");
+  const [exerciseFormActive, setExerciseFormActive] = useState(false);
+  const [exerciseBusy, setExerciseBusy] = useState(false);
 
   useEffect(() => {
     setPushPortalReady(true);
@@ -309,40 +317,56 @@ export function LiveMapPage() {
     try {
       const loadWarnings: string[] = [];
 
-      let exerciseId: string | null = null;
+      let defaultActiveExerciseId: string | null = null;
       const [exActiveRes, exListRes] = await Promise.all([
         supabase.from("exercises").select("id").eq("is_active", true).maybeSingle(),
         supabase
           .from("exercises")
-          .select("id, title, is_active, created_at")
+          .select("id, title, description, is_active, created_at")
           .order("created_at", { ascending: false }),
       ]);
       if (exActiveRes.error) {
         loadWarnings.push(`esercitazione attiva: ${exActiveRes.error.message}`);
       } else {
-        exerciseId = (exActiveRes.data?.id as string | undefined) ?? null;
+        defaultActiveExerciseId = (exActiveRes.data?.id as string | undefined) ?? null;
       }
-      setActiveExerciseId(exerciseId);
+
+      let exerciseRows: ExerciseCatalogItem[] = [];
       if (exListRes.error) {
         loadWarnings.push(`elenco esercitazioni: ${exListRes.error.message}`);
         setExerciseCatalog([]);
       } else {
-        setExerciseCatalog(
-          (exListRes.data ?? []).map((row) => ({
-            id: row.id as string,
-            title: (row.title as string) ?? "",
-            isActive: Boolean(row.is_active),
-            createdAt: row.created_at as string,
-          })),
-        );
+        exerciseRows = (exListRes.data ?? []).map((row) => ({
+          id: row.id as string,
+          title: (row.title as string) ?? "",
+          description: typeof row.description === "string" ? row.description : "",
+          isActive: Boolean(row.is_active),
+          createdAt: row.created_at as string,
+        }));
+        setExerciseCatalog(exerciseRows);
       }
 
+      let missionContextExerciseId: string | null = null;
+      try {
+        const saved = window.sessionStorage.getItem(MISSIONS_EXERCISE_STORAGE_KEY);
+        if (saved && exerciseRows.some((row) => row.id === saved)) {
+          missionContextExerciseId = saved;
+        }
+      } catch {
+        /* ignore */
+      }
+      if (!missionContextExerciseId) {
+        missionContextExerciseId =
+          defaultActiveExerciseId ?? (exerciseRows.length > 0 ? exerciseRows[0]!.id : null);
+      }
+      setActiveExerciseId(missionContextExerciseId);
+
       const missionSelectPromise =
-        exerciseId !== null
+        missionContextExerciseId !== null
           ? supabase
               .from("missions")
               .select("id, mission_code, mission_name, sort_order, is_enabled")
-              .eq("exercise_id", exerciseId)
+              .eq("exercise_id", missionContextExerciseId)
               .order("sort_order", { ascending: true })
           : Promise.resolve({ data: [], error: null as null });
 
@@ -1218,7 +1242,7 @@ export function LiveMapPage() {
     }
     if (!activeExerciseId) {
       setMessage(
-        "Nessuna esercitazione attiva (exercises.is_active): impossibile salvare missioni.",
+        "Nessuna esercitazione selezionata: creane una dalla sezione Esercitazioni o scegli dall’elenco in questa pagina.",
       );
       return;
     }
@@ -1341,6 +1365,151 @@ export function LiveMapPage() {
       await loadData();
     } finally {
       setMissionBusy(false);
+    }
+  }
+
+  function resetExerciseForm() {
+    setEditingExerciseId(null);
+    setExerciseFormTitle("");
+    setExerciseFormDescription("");
+    setExerciseFormActive(false);
+  }
+
+  function startEditingExercise(item: ExerciseCatalogItem) {
+    setEditingExerciseId(item.id);
+    setExerciseFormTitle(item.title);
+    setExerciseFormDescription(item.description ?? "");
+    setExerciseFormActive(item.isActive);
+    setAdminView("exercises");
+  }
+
+  async function handleSaveExercise() {
+    if (!session) {
+      setMessage("Accedi al backend per gestire le esercitazioni.");
+      return;
+    }
+    if (!canEdit) {
+      setMessage("Profilo viewer: modifica esercitazioni non consentita.");
+      return;
+    }
+    const title = exerciseFormTitle.trim();
+    if (!title) {
+      setMessage("Inserisci il titolo dell’esercitazione.");
+      return;
+    }
+    setExerciseBusy(true);
+    try {
+      if (editingExerciseId) {
+        const res = await fetch("/api/exercises", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session,
+            id: editingExerciseId,
+            title,
+            description: exerciseFormDescription.trim() || null,
+            isActive: exerciseFormActive,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) {
+          setMessage(data.error ?? `Aggiornamento esercitazione non riuscito (${res.status}).`);
+          return;
+        }
+        setMessage("Esercitazione aggiornata.");
+      } else {
+        const res = await fetch("/api/exercises", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session,
+            title,
+            description: exerciseFormDescription.trim() || null,
+            isActive: exerciseFormActive,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) {
+          setMessage(data.error ?? `Creazione esercitazione non riuscita (${res.status}).`);
+          return;
+        }
+        setMessage("Esercitazione creata.");
+      }
+      resetExerciseForm();
+      await loadData();
+    } finally {
+      setExerciseBusy(false);
+    }
+  }
+
+  async function handleDeleteExercise(item: ExerciseCatalogItem) {
+    if (!session || !canEdit) {
+      setMessage("Profilo viewer: cancellazione esercitazioni non consentita.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Eliminare l’esercitazione «${item.title}»? Verranno eliminate anche missioni, sessioni e dati collegati (cascade).`,
+      )
+    ) {
+      return;
+    }
+    setExerciseBusy(true);
+    try {
+      const res = await fetch("/api/exercises", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session, id: item.id }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setMessage(data.error ?? `Eliminazione non riuscita (${res.status}).`);
+        return;
+      }
+      setMessage("Esercitazione eliminata.");
+      if (editingExerciseId === item.id) {
+        resetExerciseForm();
+      }
+      try {
+        window.sessionStorage.removeItem(MISSIONS_EXERCISE_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      await loadData();
+    } finally {
+      setExerciseBusy(false);
+    }
+  }
+
+  async function handleSetExerciseActive(item: ExerciseCatalogItem) {
+    if (!session || !canEdit) {
+      setMessage("Profilo viewer: modifica esercitazioni non consentita.");
+      return;
+    }
+    if (item.isActive) {
+      setMessage("Questa esercitazione è già quella attiva (default app).");
+      return;
+    }
+    setExerciseBusy(true);
+    try {
+      const res = await fetch("/api/exercises", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session,
+          id: item.id,
+          isActive: true,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setMessage(data.error ?? `Aggiornamento non riuscito (${res.status}).`);
+        return;
+      }
+      setMessage("Esercitazione impostata come attiva (default).");
+      await loadData();
+    } finally {
+      setExerciseBusy(false);
     }
   }
 
@@ -2320,9 +2489,9 @@ export function LiveMapPage() {
       : adminView === "patrols"
         ? "Anagrafica operativa pattuglie: creazione, modifica, abilitazione, cancellazione ed export."
         : adminView === "missions"
-          ? "Elenco missioni dell’esercitazione attiva (tabella Supabase missions): crea, modifica nome/codice/ordine, abilita o elimina. Richiede deploy con service role."
+          ? "Missioni per l’esercitazione scelta nel menu a tendina (Supabase missions): crea, modifica nome/codice/ordine, abilita o elimina. API /api/missions con service role."
           : adminView === "exercises"
-            ? "L’esercitazione è il contenitore (tabella exercises): una sola risulta attiva (is_active). Le missioni appartengono a quell’esercitazione tramite exercise_id."
+            ? "Esercitazioni (exercises): CRUD da qui; una sola attiva come default app. Le missioni si legano per exercise_id dalla sezione Missioni."
             : adminView === "live-sessions"
               ? "Vista sessioni pattuglie con login, logout, stato e durata operativa."
               : adminView === "admin-access"
@@ -3188,9 +3357,10 @@ export function LiveMapPage() {
                 <div className={styles.panelHeaderTitle}>
                   <h2>Missioni</h2>
                   <p>
-                    Elenco legato all&apos;esercitazione con{" "}
-                    <code>exercises.is_active = true</code>. Creazione e modifiche passano dall&apos;API{" "}
-                    <code>/api/missions</code> (service role). L&apos;app pattuglia legge la stessa tabella.
+                    Scegli l&apos;esercitazione: l&apos;elenco mostra solo le missioni con quel{" "}
+                    <code>exercise_id</code>. Creazione e modifiche passano dall&apos;API{" "}
+                    <code>/api/missions</code> (service role). In app pattuglia l&apos;operatore sceglie
+                    l&apos;esercitazione e vede le missioni collegate.
                   </p>
                 </div>
               </div>
@@ -3202,15 +3372,46 @@ export function LiveMapPage() {
                     missioni.
                   </div>
                 </div>
+              ) : exerciseCatalog.length === 0 ? (
+                <div className={styles.listBody}>
+                  <div className={styles.emptyState}>
+                    Nessuna esercitazione su Supabase. Creane una dalla sezione{" "}
+                    <strong>Esercitazioni</strong>.
+                  </div>
+                </div>
               ) : !activeExerciseId ? (
                 <div className={styles.listBody}>
                   <div className={styles.emptyState}>
-                    Nessuna esercitazione attiva su Supabase. Imposta una riga in{" "}
-                    <code>exercises</code> con <code>is_active = true</code>.
+                    Seleziona un&apos;esercitazione dall&apos;elenco sotto.
                   </div>
                 </div>
               ) : (
                 <div className={styles.listBody}>
+                  <div className={styles.fieldGroup} style={{ marginBottom: 16 }}>
+                    <label htmlFor="missions-exercise-select">Esercitazione (contesto missioni)</label>
+                    <select
+                      id="missions-exercise-select"
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        resetMissionForm();
+                        try {
+                          window.sessionStorage.setItem(MISSIONS_EXERCISE_STORAGE_KEY, next);
+                        } catch {
+                          /* ignore */
+                        }
+                        setActiveExerciseId(next);
+                        void loadData();
+                      }}
+                      value={activeExerciseId}
+                    >
+                      {exerciseCatalog.map((row) => (
+                        <option key={row.id} value={row.id}>
+                          {row.title}
+                          {row.isActive ? " (attiva / default)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <table className={styles.registryTable}>
                     <thead>
                       <tr>
@@ -3382,12 +3583,11 @@ export function LiveMapPage() {
                 <div className={styles.panelHeaderTitle}>
                   <h2>Esercitazioni</h2>
                   <p>
-                    <strong>Esercitazione</strong> = contenitore operativo (tabella{" "}
-                    <code>exercises</code>). Quella con <code>is_active = true</code> è quella usata
-                    da app e backoffice. <strong>Missione</strong> = singola voce nella tabella{" "}
-                    <code>missions</code>, collegata all&apos;esercitazione tramite{" "}
-                    <code>exercise_id</code>. Per creare o modificare le missioni usa la voce di
-                    menu <strong>Missioni</strong>.
+                    <strong>Esercitazione</strong> = contenitore operativo (<code>exercises</code>).
+                    Una sola riga con <code>is_active = true</code> è il default in app quando non c’è
+                    altra scelta. Le <strong>missioni</strong> si gestiscono da{" "}
+                    <strong>Missioni</strong>, ciascuna legata a un <code>exercise_id</code>. CRUD qui
+                    usa <code>/api/exercises</code> (service role).
                   </p>
                 </div>
                 <div className={styles.panelHeaderActions}>
@@ -3419,9 +3619,9 @@ export function LiveMapPage() {
                     <thead>
                       <tr>
                         <th>Titolo</th>
-                        <th>Stato</th>
+                        <th>Default</th>
                         <th>Creata</th>
-                        <th>Id</th>
+                        <th>Azioni</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3441,24 +3641,124 @@ export function LiveMapPage() {
                                 row.isActive ? styles.enabledBadge : styles.disabledBadge
                               }
                             >
-                              {row.isActive ? "Attiva" : "Non attiva"}
+                              {row.isActive ? "Attiva" : "—"}
                             </span>
                           </td>
                           <td>{formatFixTimestamp(row.createdAt)}</td>
                           <td>
-                            <code style={{ fontSize: 11 }}>{row.id.slice(0, 8)}…</code>
+                            <div className={styles.tableActionRow}>
+                              <button
+                                className={styles.tableActionPrimary}
+                                disabled={!canEdit || exerciseBusy}
+                                onClick={() => startEditingExercise(row)}
+                                type="button"
+                              >
+                                Modifica
+                              </button>
+                              <button
+                                className={styles.tableActionGhost}
+                                disabled={!canEdit || exerciseBusy || row.isActive}
+                                onClick={() => {
+                                  void handleSetExerciseActive(row);
+                                }}
+                                type="button"
+                              >
+                                Imposta attiva
+                              </button>
+                              <button
+                                className={styles.tableActionDanger}
+                                disabled={!canEdit || exerciseBusy}
+                                onClick={() => {
+                                  void handleDeleteExercise(row);
+                                }}
+                                type="button"
+                              >
+                                Elimina
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  <p className={styles.pushModalHint} style={{ marginTop: 14 }}>
-                    Per cambiare quale esercitazione è attiva aggiorna <code>is_active</code> su
-                    Supabase (una sola <code>true</code> consigliata). In futuro si potrà
-                    automatizzare da qui.
-                  </p>
                 </div>
               )}
+            </section>
+
+            <section className={styles.panelCard}>
+              <div className={styles.panelHeader}>
+                <div className={styles.panelHeaderTitle}>
+                  <h2>{editingExerciseId ? "Modifica esercitazione" : "Nuova esercitazione"}</h2>
+                  <p>
+                    Imposta <strong>Attiva / default</strong> per l&apos;esercitazione predefinita
+                    in app (le altre vengono disattivate come default). Puoi comunque avere più
+                    esercitazioni e scegliere dal menu Missioni o in app pattuglia.
+                  </p>
+                </div>
+              </div>
+
+              <div className={styles.registryForm}>
+                <div className={styles.messageBox}>{message}</div>
+                <div className={styles.formGrid}>
+                  <div className={styles.fieldGroup}>
+                    <label htmlFor="exercise-title">Titolo</label>
+                    <input
+                      disabled={!supabase || exerciseBusy}
+                      id="exercise-title"
+                      onChange={(event) => setExerciseFormTitle(event.target.value)}
+                      placeholder="Esercitazione Alpha 2026"
+                      value={exerciseFormTitle}
+                    />
+                  </div>
+                  <div className={styles.fieldGroup} style={{ gridColumn: "1 / -1" }}>
+                    <label htmlFor="exercise-desc">Descrizione (opzionale)</label>
+                    <textarea
+                      disabled={!supabase || exerciseBusy}
+                      id="exercise-desc"
+                      onChange={(event) => setExerciseFormDescription(event.target.value)}
+                      placeholder="Note interne…"
+                      rows={3}
+                      value={exerciseFormDescription}
+                    />
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <label>Default app</label>
+                    <div className={styles.checkboxRow}>
+                      <input
+                        checked={exerciseFormActive}
+                        disabled={!supabase || exerciseBusy}
+                        id="exercise-active"
+                        onChange={(event) => setExerciseFormActive(event.target.checked)}
+                        type="checkbox"
+                      />
+                      <label htmlFor="exercise-active">
+                        Imposta come esercitazione attiva (una sola alla volta)
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={styles.formActions}>
+                  <button
+                    className={styles.mapAction}
+                    disabled={!canEdit || !supabase || exerciseBusy}
+                    onClick={() => {
+                      void handleSaveExercise();
+                    }}
+                    type="button"
+                  >
+                    {editingExerciseId ? "Salva modifica" : "Crea esercitazione"}
+                  </button>
+                  <button
+                    className={styles.ghostButton}
+                    disabled={exerciseBusy}
+                    onClick={resetExerciseForm}
+                    type="button"
+                  >
+                    Annulla / Nuova
+                  </button>
+                </div>
+              </div>
             </section>
           </section>
         ) : adminView === "live-sessions" ? (
