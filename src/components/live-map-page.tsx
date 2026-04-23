@@ -202,6 +202,16 @@ export function LiveMapPage() {
     setPushPortalReady(true);
   }, []);
 
+  useEffect(() => {
+    if (!pushModalOpen) {
+      return;
+    }
+    const id = window.setTimeout(() => {
+      document.getElementById("push-modal-body")?.focus();
+    }, 80);
+    return () => window.clearTimeout(id);
+  }, [pushModalOpen]);
+
   const sidePanelsScrollRef = useRef<HTMLDivElement | null>(null);
   const mainScrollRef = useRef<HTMLElement | null>(null);
   const isViewer = session?.role === "viewer";
@@ -2388,18 +2398,6 @@ export function LiveMapPage() {
                 >
                   Apri su secondo schermo
                 </button>
-                {onlinePatrolsForPush.length > 0 ? (
-                  <button
-                    className={styles.mapPushNotifyButton}
-                    type="button"
-                    title="Scegli pattuglie e testo messaggio"
-                    onClick={() => {
-                      openOperationalPushModal(null);
-                    }}
-                  >
-                    Notifica push
-                  </button>
-                ) : null}
               </div>
             </div>
 
@@ -2437,7 +2435,7 @@ export function LiveMapPage() {
                   <h2>Quadro rapido</h2>
                   <p>
                     Stato backend e pattuglie online. Scorri in basso per il dettaglio
-                    pattuglia (Notifica push, Force logout) e per l&apos;elenco live.
+                    pattuglia (push da header in alto, Force logout) e per l&apos;elenco live.
                   </p>
                 </div>
               </div>
