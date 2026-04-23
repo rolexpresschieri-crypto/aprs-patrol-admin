@@ -540,8 +540,8 @@
   gap: 0.18em;
   width: 100%;
   max-width: 100%;
-  padding: 8px 16px 9px;
-  border-radius: 10px;
+  padding: 10px 14px 11px;
+  border-radius: 16px;
   border: 2px solid rgba(0, 0, 0, 0.22);
   background: #ee8c26;
   box-shadow:
@@ -550,16 +550,16 @@
 }
 
 .tocBrandLine1,
-.tocBrandLine2 {
+.tocBrandLine2,
+.tocBrandLine3 {
   font-family: "Saira Stencil One", "Stardos Stencil", "Stencil Std", Impact, sans-serif;
-  font-size: clamp(17px, 4.5vw, 25px);
+  font-size: clamp(13px, 3.4vw, 18px);
   font-weight: 400;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: #0a0a0a;
-  line-height: 1.22;
+  color: #000000;
+  line-height: 1.18;
   margin: 0;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .authCard .tocBrandBlock {
@@ -567,9 +567,10 @@
 }
 
 .authCard .tocBrandLine1,
-.authCard .tocBrandLine2 {
-  font-size: clamp(18px, 5vw, 27px);
-  line-height: 1.22;
+.authCard .tocBrandLine2,
+.authCard .tocBrandLine3 {
+  font-size: clamp(14px, 3.8vw, 20px);
+  line-height: 1.18;
 }
 
 .brandSubtext {
