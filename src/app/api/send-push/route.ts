@@ -129,6 +129,8 @@ export async function POST(request: Request) {
   }
 
   try {
+    // Payload allineato a FCM HTTP v1 (cfr. docs/AppsScript-AllarmeApp-completo.gs: notification + android.priority).
+    // Evitiamo `data` non necessario: tutti i valori in `data` devono essere stringhe e alcuni client sono sensibili.
     const messageId = await messaging.send({
       token,
       notification: {
@@ -139,15 +141,8 @@ export async function POST(request: Request) {
         priority: "high",
         notification: {
           channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
-          sound: "default",
-          defaultSound: true,
           defaultVibrateTimings: true,
-          visibility: "public",
         },
-      },
-      data: {
-        source: "toc_admin",
-        click_action: "FLUTTER_NOTIFICATION_CLICK",
       },
     });
 

@@ -100,8 +100,8 @@
 }
 
 .pushModal {
-  width: min(520px, 100%);
-  max-height: min(88vh, 720px);
+  width: min(760px, 96vw);
+  max-height: min(92vh, 920px);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -128,8 +128,8 @@
 
 .pushModalList {
   flex: 1 1 auto;
-  min-height: 120px;
-  max-height: 280px;
+  min-height: 140px;
+  max-height: min(480px, 52vh);
   overflow: auto;
   border: 1px solid rgba(27, 45, 87, 0.9);
   border-radius: 10px;
@@ -194,6 +194,27 @@
   margin-top: 4px;
 }
 
+.pushModalSendButton {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 22px;
+  font-weight: 800;
+  font-size: 14px;
+  cursor: pointer;
+  background: #d91f2a;
+  color: #ffffff;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.28);
+}
+
+.pushModalSendButton:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.pushModalSendButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .mapMainGrid {
   flex: 1 1 auto;
   min-height: 0;
@@ -229,16 +250,17 @@
   padding: 6px 10px;
 }
 
+/* Barra sopra la mappa: solo flusso documentale (niente sticky+top: evitava “header nel mezzo mappa”). */
 .mapLiveOperationalHeaderSticky {
-  position: sticky;
-  z-index: 30;
+  position: relative;
+  z-index: 2;
   flex-shrink: 0;
   margin: 0 -2px;
   padding-left: 8px;
   padding-right: 8px;
   background: #0a1022;
   border-bottom: 1px solid rgba(23, 48, 107, 0.95);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
 }
 
 /* Operational Map: titolo, poi legenda, poi riga pulsanti (non più tutto affiancato alla legenda). */

@@ -204,9 +204,6 @@ export function LiveMapPage() {
 
   const sidePanelsScrollRef = useRef<HTMLDivElement | null>(null);
   const mainScrollRef = useRef<HTMLElement | null>(null);
-  const liveMapStickyBandRef = useRef<HTMLDivElement | null>(null);
-  const [liveMapStickyBandTopPx, setLiveMapStickyBandTopPx] = useState(168);
-
   const isViewer = session?.role === "viewer";
   const canEdit = session?.role === "admin";
 
@@ -811,29 +808,6 @@ export function LiveMapPage() {
     }
   }, [selectedPatrol, selectedSessionId, patrols]);
 
-  useLayoutEffect(() => {
-    if (adminView !== "live-map") {
-      return;
-    }
-    const el = liveMapStickyBandRef.current;
-    if (!el) {
-      return;
-    }
-    const sync = () => {
-      setLiveMapStickyBandTopPx(Math.round(el.getBoundingClientRect().height));
-    };
-    sync();
-    const ro = new ResizeObserver(() => {
-      sync();
-    });
-    ro.observe(el);
-    window.addEventListener("resize", sync);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", sync);
-    };
-  }, [adminView, backendMode, session]);
-
   const onlineCount = patrols.filter((patrol) => patrol.isOnline).length;
 
   const onlinePatrolsForPush = useMemo(() => {
@@ -1039,12 +1013,23 @@ export function LiveMapPage() {
               body: bodyText,
             }),
           });
-          const data = (await res.json().catch(() => ({}))) as {
+          const rawText = await res.text();
+          let data: {
             error?: string;
-            ok?: boolean;
+            ok?: boolean | string;
             messageId?: string;
             code?: string;
-          };
+          } = {};
+          if (rawText.trim()) {
+            try {
+              data = JSON.parse(rawText) as typeof data;
+            } catch {
+              failures.push(
+                `${patrol?.patrolCode ?? sessionId.slice(0, 8)}…: risposta non JSON (${res.status})`,
+              );
+              continue;
+            }
+          }
 
           if (!res.ok) {
             failures.push(
@@ -1052,12 +1037,16 @@ export function LiveMapPage() {
             );
             continue;
           }
-          if (data.ok === true || typeof data.messageId === "string") {
+          const accepted =
+            data.ok === true ||
+            data.ok === "true" ||
+            typeof data.messageId === "string";
+          if (accepted) {
             ok += 1;
             continue;
           }
           failures.push(
-            `${patrol?.patrolCode ?? "?"}: risposta senza conferma invio.`,
+            `${patrol?.patrolCode ?? "?"}: risposta senza conferma invio (${rawText.slice(0, 160)}${rawText.length > 160 ? "…" : ""})`,
           );
         } catch (e) {
           failures.push(
@@ -2206,7 +2195,6 @@ export function LiveMapPage() {
         }
       >
         <div
-          ref={adminView === "live-map" ? liveMapStickyBandRef : undefined}
           className={
             adminView === "live-map"
               ? styles.liveMapStickyTopBand
@@ -2369,7 +2357,6 @@ export function LiveMapPage() {
           <article className={`${styles.mapCard} ${styles.mapCardLive}`}>
             <div
               className={`${styles.mapHeader} ${styles.mapLiveOperationalHeaderSticky} ${styles.mapOperationalHeaderStack}`}
-              style={{ top: liveMapStickyBandTopPx }}
             >
               <div className={styles.mapHeaderTitle}>
                 <h2>Operational Map</h2>
@@ -3602,16 +3589,16 @@ export function LiveMapPage() {
                   >
                     Annulla
                   </button>
-                  <button
-                    className={styles.refreshButton}
-                    disabled={loading}
-                    onClick={() => {
-                      void submitOperationalPushModal();
-                    }}
-                    type="button"
-                  >
-                    Invia
-                  </button>
+              <button
+                className={styles.pushModalSendButton}
+                disabled={loading}
+                onClick={() => {
+                  void submitOperationalPushModal();
+                }}
+                type="button"
+              >
+                Invia
+              </button>
                 </div>
               </div>
             </div>,
