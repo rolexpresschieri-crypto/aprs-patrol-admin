@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Stardos+Stencil:wght@400;700&display=swap");
+
 .shell {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
@@ -525,7 +527,7 @@
   font-weight: 800;
 }
 
-/* Titolo TOC: riquadro arancione, due righe stessa dimensione, testo scuro ad alto contrasto */
+/* Titolo TOC: arancione #EF8511, font stencil (Stardos Stencil) */
 .tocBrandBlock {
   display: flex;
   flex-direction: column;
@@ -537,22 +539,23 @@
   max-width: 100%;
   padding: 18px 14px;
   border-radius: 12px;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  background: linear-gradient(165deg, #ff9f4a 0%, #ea580c 55%, #c2410c 100%);
+  border: 2px solid rgba(0, 0, 0, 0.18);
+  background: #ef8511;
   box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.2),
-    0 10px 28px rgba(234, 88, 12, 0.45);
+    0 0 0 1px rgba(0, 0, 0, 0.12),
+    0 8px 22px rgba(0, 0, 0, 0.28);
 }
 
 .tocBrandLine1,
 .tocBrandLine2 {
+  font-family: "Stardos Stencil", "Stencil Std", "Stencil", Impact, sans-serif;
   font-size: clamp(18px, 4.8vw, 26px);
-  font-weight: 900;
-  letter-spacing: 0.12em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #0f172a;
+  color: #000000;
   line-height: 1.12;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+  text-shadow: none;
 }
 
 .authCard .tocBrandBlock {
