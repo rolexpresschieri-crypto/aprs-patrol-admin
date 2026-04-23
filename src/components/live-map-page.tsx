@@ -197,10 +197,24 @@ export function LiveMapPage() {
   );
   const [pushModalSelectedIds, setPushModalSelectedIds] = useState<string[]>([]);
   const [pushPortalReady, setPushPortalReady] = useState(false);
+  const [pushSending, setPushSending] = useState(false);
+  const [pushSuccessBanner, setPushSuccessBanner] = useState<string | null>(null);
+  const [pushModalAlert, setPushModalAlert] = useState<string | null>(null);
 
   useEffect(() => {
     setPushPortalReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!pushSuccessBanner) {
+      return undefined;
+    }
+    const id = window.setTimeout(() => {
+      setPushSuccessBanner(null);
+      setPushModalOpen(false);
+    }, 2600);
+    return () => window.clearTimeout(id);
+  }, [pushSuccessBanner]);
 
   useEffect(() => {
     if (!pushModalOpen) {
@@ -964,11 +978,17 @@ export function LiveMapPage() {
       setPushModalSelectedIds(onlinePatrolsForPush.map((p) => p.sessionId));
     }
     setPushModalBody("Messaggio dal Tactical Operations Center.");
+    setPushModalAlert(null);
+    setPushSuccessBanner(null);
+    setPushSending(false);
     setPushModalOpen(true);
   }
 
   function closeOperationalPushModal() {
     setPushModalOpen(false);
+    setPushModalAlert(null);
+    setPushSuccessBanner(null);
+    setPushSending(false);
   }
 
   function togglePushModalSession(sessionId: string) {
@@ -993,6 +1013,7 @@ export function LiveMapPage() {
     }
     const bodyText = pushModalBody.trim();
     if (!bodyText) {
+      setPushModalAlert("Inserisci il testo del messaggio.");
       setMessage("Inserisci il testo del messaggio.");
       return;
     }
@@ -1000,11 +1021,14 @@ export function LiveMapPage() {
       onlinePatrolsForPush.some((p) => p.sessionId === id),
     );
     if (ids.length === 0) {
+      setPushModalAlert("Seleziona almeno una pattuglia online.");
       setMessage("Seleziona almeno una pattuglia online.");
       return;
     }
 
-    setLoading(true);
+    setPushModalAlert(null);
+    setPushSuccessBanner(null);
+    setPushSending(true);
     const failures: string[] = [];
     let ok = 0;
 
@@ -1066,18 +1090,19 @@ export function LiveMapPage() {
       }
 
       if (failures.length === 0) {
+        const doneText =
+          ok === 1
+            ? "Notifica inviata!"
+            : `Notifiche inviate! (${ok} pattuglie)`;
+        setPushSuccessBanner(doneText);
         setMessage(`Push inviate correttamente: ${ok}/${ids.length}.`);
-        closeOperationalPushModal();
       } else {
-        setMessage(
-          `Push: ${ok} riuscite, ${failures.length} non inviate — ${failures.join(" · ")}`,
-        );
-        if (ok === ids.length) {
-          closeOperationalPushModal();
-        }
+        const detail = `Push: ${ok} riuscite, ${failures.length} non inviate — ${failures.join(" · ")}`;
+        setMessage(detail);
+        setPushModalAlert(detail);
       }
     } finally {
-      setLoading(false);
+      setPushSending(false);
     }
   }
 
@@ -2243,7 +2268,7 @@ export function LiveMapPage() {
                 className={styles.headerPushNotifyButton}
                 title="Scegli una o più pattuglie online e il testo del messaggio"
                 type="button"
-                disabled={loading}
+                disabled={loading || pushSending}
                 onClick={() => {
                   openOperationalPushModal(null);
                 }}
@@ -2544,6 +2569,7 @@ export function LiveMapPage() {
                       </button>
                       <button
                         className={styles.mapPushNotifyButton}
+                        disabled={pushSending}
                         type="button"
                         onClick={() => {
                           openOperationalPushModal(
@@ -2686,6 +2712,7 @@ export function LiveMapPage() {
                         </button>
                         <button
                           className={styles.mapPushNotifyButton}
+                          disabled={pushSending}
                           type="button"
                           onClick={() => {
                             openOperationalPushModal([patrol.sessionId]);
@@ -3497,12 +3524,12 @@ export function LiveMapPage() {
             <div
               className={styles.pushModalBackdrop}
               onClick={() => {
-                if (!loading) {
+                if (!pushSending && !pushSuccessBanner) {
                   closeOperationalPushModal();
                 }
               }}
               onKeyDown={(event) => {
-                if (event.key === "Escape" && !loading) {
+                if (event.key === "Escape" && !pushSending && !pushSuccessBanner) {
                   closeOperationalPushModal();
                 }
               }}
@@ -3521,10 +3548,25 @@ export function LiveMapPage() {
                   All&apos;apertura sono selezionate <strong>tutte</strong>; puoi deselezionare o
                   usare i pulsanti rapidi.
                 </p>
+                {pushModalAlert ? (
+                  <div className={styles.pushModalErrorBanner} role="alert">
+                    {pushModalAlert}
+                  </div>
+                ) : null}
+                {pushSending ? (
+                  <p className={styles.pushModalStatusSending} role="status">
+                    Invio in corso…
+                  </p>
+                ) : null}
+                {pushSuccessBanner ? (
+                  <p aria-live="polite" className={styles.pushModalSuccessBanner} role="status">
+                    {pushSuccessBanner}
+                  </p>
+                ) : null}
                 <div className={styles.pushModalToolbar}>
                   <button
                     className={styles.mapAction}
-                    disabled={loading}
+                    disabled={pushSending || !!pushSuccessBanner}
                     onClick={setPushModalSelectAllOnline}
                     type="button"
                   >
@@ -3532,7 +3574,7 @@ export function LiveMapPage() {
                   </button>
                   <button
                     className={styles.ghostButton}
-                    disabled={loading}
+                    disabled={pushSending || !!pushSuccessBanner}
                     onClick={setPushModalClearSelection}
                     type="button"
                   >
@@ -3546,7 +3588,7 @@ export function LiveMapPage() {
                       <div className={styles.pushModalRow} key={p.sessionId}>
                         <input
                           checked={pushModalSelectedIds.includes(p.sessionId)}
-                          disabled={loading}
+                          disabled={pushSending || !!pushSuccessBanner}
                           id={inputId}
                           onChange={() => {
                             togglePushModalSession(p.sessionId);
@@ -3573,7 +3615,7 @@ export function LiveMapPage() {
                 </label>
                 <textarea
                   className={styles.pushModalTextarea}
-                  disabled={loading}
+                  disabled={pushSending || !!pushSuccessBanner}
                   id="push-modal-body"
                   onChange={(event) => setPushModalBody(event.target.value)}
                   value={pushModalBody}
@@ -3581,21 +3623,21 @@ export function LiveMapPage() {
                 <div className={styles.pushModalActions}>
                   <button
                     className={styles.ghostButton}
-                    disabled={loading}
+                    disabled={pushSending}
                     onClick={closeOperationalPushModal}
                     type="button"
                   >
-                    Annulla
+                    {pushSuccessBanner ? "Chiudi" : "Annulla"}
                   </button>
               <button
                 className={styles.pushModalSendButton}
-                disabled={loading}
+                disabled={pushSending || !!pushSuccessBanner}
                 onClick={() => {
                   void submitOperationalPushModal();
                 }}
                 type="button"
               >
-                Invia
+                {pushSending ? "Invio in corso…" : "Invia"}
               </button>
                 </div>
               </div>
