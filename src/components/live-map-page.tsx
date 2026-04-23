@@ -190,6 +190,11 @@ export function LiveMapPage() {
   const [waypoints, setWaypoints] = useState<TacticalWaypoint[]>([]);
   const [waypointBusy, setWaypointBusy] = useState(false);
   const [waypointFeedError, setWaypointFeedError] = useState<string | null>(null);
+  const [pushModalOpen, setPushModalOpen] = useState(false);
+  const [pushModalBody, setPushModalBody] = useState(
+    "Messaggio dal Tactical Operations Center.",
+  );
+  const [pushModalSelectedIds, setPushModalSelectedIds] = useState<string[]>([]);
 
   const sidePanelsScrollRef = useRef<HTMLDivElement | null>(null);
   const mainScrollRef = useRef<HTMLElement | null>(null);
@@ -824,6 +829,20 @@ export function LiveMapPage() {
   }, [adminView, backendMode, session]);
 
   const onlineCount = patrols.filter((patrol) => patrol.isOnline).length;
+
+  const onlinePatrolsForPush = useMemo(() => {
+    const seen = new Set<string>();
+    const out: LivePatrol[] = [];
+    for (const p of patrols) {
+      if (!p.isOnline || !p.sessionId || seen.has(p.sessionId)) {
+        continue;
+      }
+      seen.add(p.sessionId);
+      out.push(p);
+    }
+    return out;
+  }, [patrols]);
+
   const withFixCount = patrols.filter((patrol) => hasCoordinates(patrol)).length;
   const missionCount = new Set(
     patrols
@@ -936,65 +955,122 @@ export function LiveMapPage() {
     }
   }
 
-  async function handleSendOperationalPush(patrol: LivePatrol) {
-    if (!patrol.isOnline || !patrol.sessionId) {
-      setMessage("La pattuglia non è online: nessun invio push.");
-      return;
-    }
-
+  function openOperationalPushModal(presetSessionIds?: string[] | null) {
     if (!session) {
-      setMessage("Accedi come TOC (admin o viewer) per inviare una notifica push.");
+      setMessage("Accedi come TOC (admin o viewer) per inviare notifiche push.");
       return;
     }
+    if (onlinePatrolsForPush.length === 0) {
+      setMessage("Nessuna pattuglia online da notificare.");
+      return;
+    }
+    const preset =
+      presetSessionIds?.filter((id) =>
+        onlinePatrolsForPush.some((p) => p.sessionId === id),
+      ) ?? [];
+    if (preset.length > 0) {
+      setPushModalSelectedIds(preset);
+    } else {
+      setPushModalSelectedIds(onlinePatrolsForPush.map((p) => p.sessionId));
+    }
+    setPushModalBody("Messaggio dal Tactical Operations Center.");
+    setPushModalOpen(true);
+  }
 
-    const bodyText = window.prompt(
-      "Testo della notifica inviata al dispositivo pattuglia:",
-      "Messaggio dal Tactical Operations Center.",
+  function closeOperationalPushModal() {
+    setPushModalOpen(false);
+  }
+
+  function togglePushModalSession(sessionId: string) {
+    setPushModalSelectedIds((prev) =>
+      prev.includes(sessionId)
+        ? prev.filter((id) => id !== sessionId)
+        : [...prev, sessionId],
     );
+  }
 
-    if (bodyText === null) {
+  function setPushModalSelectAllOnline() {
+    setPushModalSelectedIds(onlinePatrolsForPush.map((p) => p.sessionId));
+  }
+
+  function setPushModalClearSelection() {
+    setPushModalSelectedIds([]);
+  }
+
+  async function submitOperationalPushModal() {
+    if (!session) {
       return;
     }
-
-    if (!bodyText.trim()) {
-      setMessage("Testo vuoto: invio push annullato.");
+    const bodyText = pushModalBody.trim();
+    if (!bodyText) {
+      setMessage("Inserisci il testo del messaggio.");
+      return;
+    }
+    const ids = pushModalSelectedIds.filter((id) =>
+      onlinePatrolsForPush.some((p) => p.sessionId === id),
+    );
+    if (ids.length === 0) {
+      setMessage("Seleziona almeno una pattuglia online.");
       return;
     }
 
     setLoading(true);
+    const failures: string[] = [];
+    let ok = 0;
 
     try {
-      const res = await fetch("/api/send-push", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session,
-          sessionId: patrol.sessionId,
-          title: `TOC — ${patrol.patrolCode}`,
-          body: bodyText.trim(),
-        }),
-      });
+      for (const sessionId of ids) {
+        const patrol = patrols.find((p) => p.sessionId === sessionId);
+        const title = patrol ? `TOC — ${patrol.patrolCode}` : "TOC — avviso operativo";
+        try {
+          const res = await fetch("/api/send-push", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              session,
+              sessionId,
+              title,
+              body: bodyText,
+            }),
+          });
+          const data = (await res.json().catch(() => ({}))) as {
+            error?: string;
+            ok?: boolean;
+            messageId?: string;
+            code?: string;
+          };
 
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        ok?: boolean;
-        messageId?: string;
-        code?: string;
-      };
-
-      if (!res.ok) {
-        throw new Error(data.error ?? `Errore server ${res.status}`);
+          if (!res.ok) {
+            failures.push(
+              `${patrol?.patrolCode ?? sessionId.slice(0, 8)}…: ${data.error ?? `HTTP ${res.status}`}${data.code ? ` [${data.code}]` : ""}`,
+            );
+            continue;
+          }
+          if (data.ok === true || typeof data.messageId === "string") {
+            ok += 1;
+            continue;
+          }
+          failures.push(
+            `${patrol?.patrolCode ?? "?"}: risposta senza conferma invio.`,
+          );
+        } catch (e) {
+          failures.push(
+            `${patrol?.patrolCode ?? "?"}: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
       }
 
-      if (data.ok) {
+      if (failures.length === 0) {
+        setMessage(`Push inviate correttamente: ${ok}/${ids.length}.`);
+        closeOperationalPushModal();
+      } else {
         setMessage(
-          `Push inviata a ${patrol.patrolCode} (${patrol.patrolName}). ID messaggio: ${data.messageId ?? "n/d"}.`,
+          `Push: ${ok} riuscite, ${failures.length} non inviate — ${failures.join(" · ")}`,
         );
+        if (ok === ids.length) {
+          closeOperationalPushModal();
+        }
       }
-    } catch (error) {
-      const errorText =
-        error instanceof Error ? error.message : "Errore sconosciuto.";
-      setMessage(`Invio push non riuscito: ${errorText}`);
     } finally {
       setLoading(false);
     }
@@ -2037,6 +2113,7 @@ export function LiveMapPage() {
   }
 
   return (
+    <>
       <div className={styles.shell}>
       <aside className={styles.sidebar}>
         <div className={styles.sidebarTop}>
@@ -2157,14 +2234,14 @@ export function LiveMapPage() {
             >
               Logout
             </button>
-            {adminView === "live-map" && patrolForOperationalPush ? (
+            {adminView === "live-map" && onlinePatrolsForPush.length > 0 ? (
               <button
                 className={styles.refreshButton}
-                title={`FCM verso ${patrolForOperationalPush.patrolCode} — ${patrolForOperationalPush.patrolName}`}
+                title="Scegli una o più pattuglie online e il testo del messaggio"
                 type="button"
                 disabled={loading}
                 onClick={() => {
-                  void handleSendOperationalPush(patrolForOperationalPush);
+                  openOperationalPushModal(null);
                 }}
               >
                 Notifica push
@@ -2316,13 +2393,13 @@ export function LiveMapPage() {
                 >
                   Apri su secondo schermo
                 </button>
-                {patrolForOperationalPush ? (
+                {onlinePatrolsForPush.length > 0 ? (
                   <button
                     className={styles.mapAction}
                     type="button"
-                    title={`FCM verso ${patrolForOperationalPush.patrolCode}`}
+                    title="Scegli pattuglie e testo messaggio"
                     onClick={() => {
-                      void handleSendOperationalPush(patrolForOperationalPush);
+                      openOperationalPushModal(null);
                     }}
                   >
                     Notifica push
@@ -2476,7 +2553,9 @@ export function LiveMapPage() {
                         className={styles.mapAction}
                         type="button"
                         onClick={() => {
-                          void handleSendOperationalPush(selectedPatrol);
+                          openOperationalPushModal(
+                            selectedPatrol ? [selectedPatrol.sessionId] : null,
+                          );
                         }}
                       >
                         Notifica push
@@ -2616,7 +2695,7 @@ export function LiveMapPage() {
                           className={styles.mapAction}
                           type="button"
                           onClick={() => {
-                            void handleSendOperationalPush(patrol);
+                            openOperationalPushModal([patrol.sessionId]);
                           }}
                         >
                           Push
@@ -3419,5 +3498,115 @@ export function LiveMapPage() {
       </main>
       </div>
       </div>
+
+      {pushModalOpen ? (
+        <div
+          className={styles.pushModalBackdrop}
+          onClick={() => {
+            if (!loading) {
+              closeOperationalPushModal();
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !loading) {
+              closeOperationalPushModal();
+            }
+          }}
+          role="presentation"
+        >
+          <div
+            aria-labelledby="push-modal-title"
+            aria-modal="true"
+            className={styles.pushModal}
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <h2 id="push-modal-title">Notifica push pattuglie</h2>
+            <p className={styles.pushModalHint}>
+              Elenco pattuglie <strong>online</strong>: spunta chi deve ricevere il messaggio.
+              All&apos;apertura sono selezionate <strong>tutte</strong>; puoi deselezionare o
+              usare i pulsanti rapidi.
+            </p>
+            <div className={styles.pushModalToolbar}>
+              <button
+                className={styles.mapAction}
+                disabled={loading}
+                onClick={setPushModalSelectAllOnline}
+                type="button"
+              >
+                Seleziona tutte
+              </button>
+              <button
+                className={styles.ghostButton}
+                disabled={loading}
+                onClick={setPushModalClearSelection}
+                type="button"
+              >
+                Deseleziona tutte
+              </button>
+            </div>
+            <div className={styles.pushModalList}>
+              {onlinePatrolsForPush.map((p) => {
+                const inputId = `push-modal-cb-${p.sessionId}`;
+                return (
+                  <div className={styles.pushModalRow} key={p.sessionId}>
+                    <input
+                      checked={pushModalSelectedIds.includes(p.sessionId)}
+                      disabled={loading}
+                      id={inputId}
+                      onChange={() => {
+                        togglePushModalSession(p.sessionId);
+                      }}
+                      type="checkbox"
+                    />
+                    <label className={styles.pushModalRowLabel} htmlFor={inputId}>
+                      <span className={styles.pushModalRowCode}>{p.patrolCode}</span>
+                      {" — "}
+                      {p.patrolName}
+                      {p.missionName ? (
+                        <span style={{ color: "#8a93ab", fontSize: 12 }}>
+                          {" "}
+                          · {p.missionName}
+                        </span>
+                      ) : null}
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+            <label className={styles.pushModalHint} htmlFor="push-modal-body">
+              Testo del messaggio
+            </label>
+            <textarea
+              className={styles.pushModalTextarea}
+              disabled={loading}
+              id="push-modal-body"
+              onChange={(event) => setPushModalBody(event.target.value)}
+              value={pushModalBody}
+            />
+            <div className={styles.pushModalActions}>
+              <button
+                className={styles.ghostButton}
+                disabled={loading}
+                onClick={closeOperationalPushModal}
+                type="button"
+              >
+                Annulla
+              </button>
+              <button
+                className={styles.refreshButton}
+                disabled={loading}
+                onClick={() => {
+                  void submitOperationalPushModal();
+                }}
+                type="button"
+              >
+                Invia
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

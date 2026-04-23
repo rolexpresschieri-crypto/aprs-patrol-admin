@@ -136,9 +136,18 @@ export async function POST(request: Request) {
         body: bodyText,
       },
       android: {
+        priority: "high",
         notification: {
           channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
+          sound: "default",
+          defaultSound: true,
+          defaultVibrateTimings: true,
+          visibility: "public",
         },
+      },
+      data: {
+        source: "toc_admin",
+        click_action: "FLUTTER_NOTIFICATION_CLICK",
       },
     });
 
