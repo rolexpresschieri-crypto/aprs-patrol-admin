@@ -1,4 +1,6 @@
-@import url("https://fonts.googleapis.com/css2?family=Stardos+Stencil:wght@400;700&display=swap");
+@import url(
+  "https://fonts.googleapis.com/css2?family=Saira+Stencil+One&family=Stardos+Stencil:wght@400;700&display=swap"
+);
 
 .shell {
   display: grid;
@@ -527,7 +529,7 @@
   font-weight: 800;
 }
 
-/* Titolo TOC: arancione #EF8511, font stencil (Stardos Stencil) */
+/* Titolo TOC: badge arancione + stencil (riferimento #EE8C26, Saira Stencil One) */
 .tocBrandBlock {
   display: flex;
   flex-direction: column;
@@ -535,32 +537,29 @@
   justify-content: center;
   text-align: center;
   /* Distanza tra le due righe proporzionale al font, allineata all’interlinea (vedi line-height) */
-  gap: 0.22em;
+  gap: 0.18em;
   width: 100%;
   max-width: 100%;
-  padding: 7px 14px 8px;
-  border-radius: 12px;
-  border: 2px solid rgba(0, 0, 0, 0.18);
-  background: #ef8511;
+  padding: 8px 16px 9px;
+  border-radius: 10px;
+  border: 2px solid rgba(0, 0, 0, 0.22);
+  background: #ee8c26;
   box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.12),
-    0 8px 22px rgba(0, 0, 0, 0.28);
+    0 0 0 1px rgba(0, 0, 0, 0.14),
+    0 8px 22px rgba(0, 0, 0, 0.32);
 }
 
 .tocBrandLine1,
 .tocBrandLine2 {
-  font-family: "Stardos Stencil", "Stencil Std", "Stencil", Impact, sans-serif;
-  font-size: clamp(18px, 4.8vw, 26px);
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  font-family: "Saira Stencil One", "Stardos Stencil", "Stencil Std", Impact, sans-serif;
+  font-size: clamp(17px, 4.5vw, 25px);
+  font-weight: 400;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #000000;
-  /* Stessa interlinea su entrambe le righe */
-  line-height: 1.28;
+  color: #0a0a0a;
+  line-height: 1.22;
   margin: 0;
-  text-shadow: none;
-  -webkit-text-stroke: 0.45px #000000;
-  paint-order: stroke fill;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .authCard .tocBrandBlock {
@@ -569,9 +568,8 @@
 
 .authCard .tocBrandLine1,
 .authCard .tocBrandLine2 {
-  font-size: clamp(19px, 5.2vw, 28px);
-  line-height: 1.28;
-  -webkit-text-stroke: 0.45px #000000;
+  font-size: clamp(18px, 5vw, 27px);
+  line-height: 1.22;
 }
 
 .brandSubtext {
