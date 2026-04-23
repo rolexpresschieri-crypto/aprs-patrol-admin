@@ -193,6 +193,8 @@ export function LiveMapPage() {
 
   const sidePanelsScrollRef = useRef<HTMLDivElement | null>(null);
   const mainScrollRef = useRef<HTMLElement | null>(null);
+  const liveMapStickyBandRef = useRef<HTMLDivElement | null>(null);
+  const [liveMapStickyBandTopPx, setLiveMapStickyBandTopPx] = useState(168);
 
   const isViewer = session?.role === "viewer";
   const canEdit = session?.role === "admin";
@@ -768,8 +770,27 @@ export function LiveMapPage() {
     filteredPatrols[0] ??
     null;
 
+  /** Pattuglia per FCM: resta anche se i filtri escludono temporaneamente la riga dalla lista filtrata. */
+  const patrolForOperationalPush = useMemo(() => {
+    if (selectedSessionId) {
+      const fromAll = patrols.find(
+        (p) => p.sessionId === selectedSessionId && p.isOnline,
+      );
+      if (fromAll) {
+        return fromAll;
+      }
+    }
+    return selectedPatrol;
+  }, [patrols, selectedPatrol, selectedSessionId]);
+
   useEffect(() => {
     if (!selectedPatrol) {
+      if (
+        selectedSessionId &&
+        patrols.some((p) => p.sessionId === selectedSessionId)
+      ) {
+        return;
+      }
       setSelectedSessionId(null);
       return;
     }
@@ -777,7 +798,30 @@ export function LiveMapPage() {
     if (selectedPatrol.sessionId !== selectedSessionId) {
       setSelectedSessionId(selectedPatrol.sessionId);
     }
-  }, [selectedPatrol, selectedSessionId]);
+  }, [selectedPatrol, selectedSessionId, patrols]);
+
+  useLayoutEffect(() => {
+    if (adminView !== "live-map") {
+      return;
+    }
+    const el = liveMapStickyBandRef.current;
+    if (!el) {
+      return;
+    }
+    const sync = () => {
+      setLiveMapStickyBandTopPx(Math.round(el.getBoundingClientRect().height));
+    };
+    sync();
+    const ro = new ResizeObserver(() => {
+      sync();
+    });
+    ro.observe(el);
+    window.addEventListener("resize", sync);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", sync);
+    };
+  }, [adminView, backendMode, session]);
 
   const onlineCount = patrols.filter((patrol) => patrol.isOnline).length;
   const withFixCount = patrols.filter((patrol) => hasCoordinates(patrol)).length;
@@ -2078,6 +2122,14 @@ export function LiveMapPage() {
               : styles.content
         }
       >
+        <div
+          ref={adminView === "live-map" ? liveMapStickyBandRef : undefined}
+          className={
+            adminView === "live-map"
+              ? styles.liveMapStickyTopBand
+              : styles.layoutMainTopTransparent
+          }
+        >
         <section className={styles.header}>
           <div className={styles.headerTitle}>
             <span className={styles.eyebrow}>{pageEyebrow}</span>
@@ -2105,14 +2157,14 @@ export function LiveMapPage() {
             >
               Logout
             </button>
-            {adminView === "live-map" && selectedPatrol ? (
+            {adminView === "live-map" && patrolForOperationalPush ? (
               <button
                 className={styles.refreshButton}
-                title={`FCM verso ${selectedPatrol.patrolCode} — ${selectedPatrol.patrolName}`}
+                title={`FCM verso ${patrolForOperationalPush.patrolCode} — ${patrolForOperationalPush.patrolName}`}
                 type="button"
                 disabled={loading}
                 onClick={() => {
-                  void handleSendOperationalPush(selectedPatrol);
+                  void handleSendOperationalPush(patrolForOperationalPush);
                 }}
               >
                 Notifica push
@@ -2227,11 +2279,15 @@ export function LiveMapPage() {
           </div>
         </section>
         )}
+        </div>
 
         {adminView === "live-map" ? (
         <section className={`${styles.mainGrid} ${styles.mapMainGrid}`}>
           <article className={`${styles.mapCard} ${styles.mapCardLive}`}>
-            <div className={styles.mapHeader}>
+            <div
+              className={`${styles.mapHeader} ${styles.mapLiveOperationalHeaderSticky}`}
+              style={{ top: liveMapStickyBandTopPx }}
+            >
               <div className={styles.mapHeaderTitle}>
                 <h2>Operational Map</h2>
                 <p>
@@ -2260,6 +2316,18 @@ export function LiveMapPage() {
                 >
                   Apri su secondo schermo
                 </button>
+                {patrolForOperationalPush ? (
+                  <button
+                    className={styles.mapAction}
+                    type="button"
+                    title={`FCM verso ${patrolForOperationalPush.patrolCode}`}
+                    onClick={() => {
+                      void handleSendOperationalPush(patrolForOperationalPush);
+                    }}
+                  >
+                    Notifica push
+                  </button>
+                ) : null}
               </div>
             </div>
 

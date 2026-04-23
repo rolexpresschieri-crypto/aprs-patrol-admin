@@ -71,6 +71,21 @@
   flex-shrink: 0;
 }
 
+/* Mappa live: header + filtri restano visibili mentre si scorre verso la mappa / elenco. */
+.liveMapStickyTopBand {
+  position: sticky;
+  top: 0;
+  z-index: 35;
+  margin: 0 -4px;
+  padding: 0 4px 8px;
+  background: #06080f;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.layoutMainTopTransparent {
+  display: contents;
+}
+
 .mapMainGrid {
   flex: 1 1 auto;
   min-height: 0;
@@ -90,7 +105,9 @@
   display: flex;
   flex-direction: column;
   min-height: min(440px, 56vh);
-  overflow: hidden;
+  /* `overflow-y: visible` consente `position: sticky` sulla mapHeader rispetto allo scroll del <main>. */
+  overflow-x: hidden;
+  overflow-y: visible;
 }
 
 .mapCardLive .mapStage {
@@ -102,6 +119,18 @@
 
 .mapCardLive .mapHeader {
   padding: 6px 10px;
+}
+
+.mapLiveOperationalHeaderSticky {
+  position: sticky;
+  z-index: 30;
+  flex-shrink: 0;
+  margin: 0 -2px;
+  padding-left: 8px;
+  padding-right: 8px;
+  background: #0a1022;
+  border-bottom: 1px solid rgba(23, 48, 107, 0.95);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
 }
 
 .mapCardLive .mapHeaderTitle h2 {
