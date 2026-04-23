@@ -74,10 +74,18 @@ type AdminView =
   | "live-map"
   | "patrols"
   | "missions"
+  | "exercises"
   | "export"
   | "admin-access"
   | "admin-accounts"
   | "live-sessions";
+
+type ExerciseCatalogItem = {
+  id: string;
+  title: string;
+  isActive: boolean;
+  createdAt: string;
+};
 
 type MissionCatalogItem = {
   id: string;
@@ -218,6 +226,7 @@ export function LiveMapPage() {
   const [missionFormSort, setMissionFormSort] = useState("0");
   const [missionFormEnabled, setMissionFormEnabled] = useState(true);
   const [missionBusy, setMissionBusy] = useState(false);
+  const [exerciseCatalog, setExerciseCatalog] = useState<ExerciseCatalogItem[]>([]);
 
   useEffect(() => {
     setPushPortalReady(true);
@@ -286,6 +295,7 @@ export function LiveMapPage() {
       setPatrols(mockPatrols);
       setMissions(["MISSIONE ALFA", "MISSIONE BRAVO", "MISSIONE CHARLIE"]);
       setMissionCatalog([]);
+      setExerciseCatalog([]);
       setActiveExerciseId(null);
       setWaypoints(mockWaypoints);
       setWaypointFeedError(null);
@@ -300,17 +310,32 @@ export function LiveMapPage() {
       const loadWarnings: string[] = [];
 
       let exerciseId: string | null = null;
-      const exRes = await supabase
-        .from("exercises")
-        .select("id")
-        .eq("is_active", true)
-        .maybeSingle();
-      if (exRes.error) {
-        loadWarnings.push(`esercitazione attiva: ${exRes.error.message}`);
+      const [exActiveRes, exListRes] = await Promise.all([
+        supabase.from("exercises").select("id").eq("is_active", true).maybeSingle(),
+        supabase
+          .from("exercises")
+          .select("id, title, is_active, created_at")
+          .order("created_at", { ascending: false }),
+      ]);
+      if (exActiveRes.error) {
+        loadWarnings.push(`esercitazione attiva: ${exActiveRes.error.message}`);
       } else {
-        exerciseId = (exRes.data?.id as string | undefined) ?? null;
+        exerciseId = (exActiveRes.data?.id as string | undefined) ?? null;
       }
       setActiveExerciseId(exerciseId);
+      if (exListRes.error) {
+        loadWarnings.push(`elenco esercitazioni: ${exListRes.error.message}`);
+        setExerciseCatalog([]);
+      } else {
+        setExerciseCatalog(
+          (exListRes.data ?? []).map((row) => ({
+            id: row.id as string,
+            title: (row.title as string) ?? "",
+            isActive: Boolean(row.is_active),
+            createdAt: row.created_at as string,
+          })),
+        );
+      }
 
       const missionSelectPromise =
         exerciseId !== null
@@ -713,6 +738,7 @@ export function LiveMapPage() {
       setRegistryItems(mockPatrolRegistry);
       setAdminAccessEvents([]);
       setSessionRecords([]);
+      setExerciseCatalog([]);
       setMessage(
         `Lettura live non riuscita: ${errorText}. Rimango in fallback mock per proseguire il lavoro UI.`,
       );
@@ -2238,8 +2264,9 @@ export function LiveMapPage() {
       case "Pattuglie":
         return "patrols";
       case "Missioni":
-      case "Esercitazioni":
         return "missions";
+      case "Esercitazioni":
+        return "exercises";
       case "Sessioni Live":
         return "live-sessions";
       case "Accessi Admin":
@@ -2260,13 +2287,15 @@ export function LiveMapPage() {
         ? "Gestione Pattuglie"
         : adminView === "missions"
           ? "Missioni esercitazione"
-          : adminView === "live-sessions"
-            ? "Sessioni Pattuglie"
-            : adminView === "admin-access"
-              ? "Accessi Admin"
-              : adminView === "admin-accounts"
-                ? "Gestione account backend"
-                : "Export Pattuglie";
+          : adminView === "exercises"
+            ? "Esercitazioni"
+            : adminView === "live-sessions"
+              ? "Sessioni Pattuglie"
+              : adminView === "admin-access"
+                ? "Accessi Admin"
+                : adminView === "admin-accounts"
+                  ? "Gestione account backend"
+                  : "Export Pattuglie";
 
   const pageEyebrow =
     adminView === "live-map"
@@ -2275,13 +2304,15 @@ export function LiveMapPage() {
         ? "Patrol Registry"
         : adminView === "missions"
           ? "Mission registry"
-          : adminView === "live-sessions"
-            ? "Patrol Sessions"
-            : adminView === "admin-access"
-              ? "Admin Audit Trail"
-              : adminView === "admin-accounts"
-                ? "Admin user registry"
-                : "Operational Export";
+          : adminView === "exercises"
+            ? "Exercise container"
+            : adminView === "live-sessions"
+              ? "Patrol Sessions"
+              : adminView === "admin-access"
+                ? "Admin Audit Trail"
+                : adminView === "admin-accounts"
+                  ? "Admin user registry"
+                  : "Operational Export";
 
   const pageDescription =
     adminView === "live-map"
@@ -2290,13 +2321,15 @@ export function LiveMapPage() {
         ? "Anagrafica operativa pattuglie: creazione, modifica, abilitazione, cancellazione ed export."
         : adminView === "missions"
           ? "Elenco missioni dell’esercitazione attiva (tabella Supabase missions): crea, modifica nome/codice/ordine, abilita o elimina. Richiede deploy con service role."
-          : adminView === "live-sessions"
-            ? "Vista sessioni pattuglie con login, logout, stato e durata operativa."
-            : adminView === "admin-access"
-              ? "Storico accessi backend con login e logout di admin e viewer."
-              : adminView === "admin-accounts"
-                ? "Crea o modifica account admin e viewer (tabella Supabase admins). Disponibile solo in modalità Live con ruolo amministratore."
-                : "Esporta l'elenco pattuglie in formato CSV o PDF per invio rapido agli operatori.";
+          : adminView === "exercises"
+            ? "L’esercitazione è il contenitore (tabella exercises): una sola risulta attiva (is_active). Le missioni appartengono a quell’esercitazione tramite exercise_id."
+            : adminView === "live-sessions"
+              ? "Vista sessioni pattuglie con login, logout, stato e durata operativa."
+              : adminView === "admin-access"
+                ? "Storico accessi backend con login e logout di admin e viewer."
+                : adminView === "admin-accounts"
+                  ? "Crea o modifica account admin e viewer (tabella Supabase admins). Disponibile solo in modalità Live con ruolo amministratore."
+                  : "Esporta l'elenco pattuglie in formato CSV o PDF per invio rapido agli operatori.";
 
   if (!authChecked) {
     return null;
@@ -2387,8 +2420,8 @@ export function LiveMapPage() {
               const isActive =
                 (item === "Mappa Live" && adminView === "live-map") ||
                 (item === "Pattuglie" && adminView === "patrols") ||
-                ((item === "Missioni" || item === "Esercitazioni") &&
-                  adminView === "missions") ||
+                (item === "Missioni" && adminView === "missions") ||
+                (item === "Esercitazioni" && adminView === "exercises") ||
                 (item === "Sessioni Live" && adminView === "live-sessions") ||
                 (item === "Accessi Admin" && adminView === "admin-access") ||
                 (item === "Admin" && adminView === "admin-accounts") ||
@@ -3340,6 +3373,92 @@ export function LiveMapPage() {
                   </button>
                 </div>
               </div>
+            </section>
+          </section>
+        ) : adminView === "exercises" ? (
+          <section className={styles.registryWrap}>
+            <section className={styles.panelCard}>
+              <div className={styles.panelHeader}>
+                <div className={styles.panelHeaderTitle}>
+                  <h2>Esercitazioni</h2>
+                  <p>
+                    <strong>Esercitazione</strong> = contenitore operativo (tabella{" "}
+                    <code>exercises</code>). Quella con <code>is_active = true</code> è quella usata
+                    da app e backoffice. <strong>Missione</strong> = singola voce nella tabella{" "}
+                    <code>missions</code>, collegata all&apos;esercitazione tramite{" "}
+                    <code>exercise_id</code>. Per creare o modificare le missioni usa la voce di
+                    menu <strong>Missioni</strong>.
+                  </p>
+                </div>
+                <div className={styles.panelHeaderActions}>
+                  <button
+                    className={styles.mapAction}
+                    onClick={() => {
+                      setAdminView("missions");
+                    }}
+                    type="button"
+                  >
+                    Vai a gestione missioni
+                  </button>
+                </div>
+              </div>
+
+              {!supabase ? (
+                <div className={styles.listBody}>
+                  <div className={styles.emptyState}>
+                    Modalità mock: collega Supabase per vedere le esercitazioni.
+                  </div>
+                </div>
+              ) : exerciseCatalog.length === 0 ? (
+                <div className={styles.listBody}>
+                  <div className={styles.emptyState}>Nessuna esercitazione in elenco.</div>
+                </div>
+              ) : (
+                <div className={styles.listBody}>
+                  <table className={styles.registryTable}>
+                    <thead>
+                      <tr>
+                        <th>Titolo</th>
+                        <th>Stato</th>
+                        <th>Creata</th>
+                        <th>Id</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {exerciseCatalog.map((row) => (
+                        <tr
+                          key={row.id}
+                          className={
+                            row.isActive
+                              ? styles.registryRowActive
+                              : styles.registryRowDisabled
+                          }
+                        >
+                          <td>{row.title}</td>
+                          <td>
+                            <span
+                              className={
+                                row.isActive ? styles.enabledBadge : styles.disabledBadge
+                              }
+                            >
+                              {row.isActive ? "Attiva" : "Non attiva"}
+                            </span>
+                          </td>
+                          <td>{formatFixTimestamp(row.createdAt)}</td>
+                          <td>
+                            <code style={{ fontSize: 11 }}>{row.id.slice(0, 8)}…</code>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className={styles.pushModalHint} style={{ marginTop: 14 }}>
+                    Per cambiare quale esercitazione è attiva aggiorna <code>is_active</code> su
+                    Supabase (una sola <code>true</code> consigliata). In futuro si potrà
+                    automatizzare da qui.
+                  </p>
+                </div>
+              )}
             </section>
           </section>
         ) : adminView === "live-sessions" ? (
