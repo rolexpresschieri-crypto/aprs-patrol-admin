@@ -73,10 +73,19 @@ type BackendMode = "live" | "mock";
 type AdminView =
   | "live-map"
   | "patrols"
+  | "missions"
   | "export"
   | "admin-access"
   | "admin-accounts"
   | "live-sessions";
+
+type MissionCatalogItem = {
+  id: string;
+  missionCode: string;
+  missionName: string;
+  sortOrder: number;
+  isEnabled: boolean;
+};
 type AdminAccessEvent = {
   id: string;
   adminCode: string;
@@ -201,6 +210,15 @@ export function LiveMapPage() {
   const [pushSuccessBanner, setPushSuccessBanner] = useState<string | null>(null);
   const [pushModalAlert, setPushModalAlert] = useState<string | null>(null);
 
+  const [activeExerciseId, setActiveExerciseId] = useState<string | null>(null);
+  const [missionCatalog, setMissionCatalog] = useState<MissionCatalogItem[]>([]);
+  const [editingMissionId, setEditingMissionId] = useState<string | null>(null);
+  const [missionFormCode, setMissionFormCode] = useState("");
+  const [missionFormName, setMissionFormName] = useState("");
+  const [missionFormSort, setMissionFormSort] = useState("0");
+  const [missionFormEnabled, setMissionFormEnabled] = useState(true);
+  const [missionBusy, setMissionBusy] = useState(false);
+
   useEffect(() => {
     setPushPortalReady(true);
   }, []);
@@ -267,6 +285,8 @@ export function LiveMapPage() {
     if (!supabase) {
       setPatrols(mockPatrols);
       setMissions(["MISSIONE ALFA", "MISSIONE BRAVO", "MISSIONE CHARLIE"]);
+      setMissionCatalog([]);
+      setActiveExerciseId(null);
       setWaypoints(mockWaypoints);
       setWaypointFeedError(null);
       setBackendMode("mock");
@@ -278,6 +298,28 @@ export function LiveMapPage() {
 
     try {
       const loadWarnings: string[] = [];
+
+      let exerciseId: string | null = null;
+      const exRes = await supabase
+        .from("exercises")
+        .select("id")
+        .eq("is_active", true)
+        .maybeSingle();
+      if (exRes.error) {
+        loadWarnings.push(`esercitazione attiva: ${exRes.error.message}`);
+      } else {
+        exerciseId = (exRes.data?.id as string | undefined) ?? null;
+      }
+      setActiveExerciseId(exerciseId);
+
+      const missionSelectPromise =
+        exerciseId !== null
+          ? supabase
+              .from("missions")
+              .select("id, mission_code, mission_name, sort_order, is_enabled")
+              .eq("exercise_id", exerciseId)
+              .order("sort_order", { ascending: true })
+          : Promise.resolve({ data: [], error: null as null });
 
       let patrolResult;
       let missionResult;
@@ -292,11 +334,7 @@ export function LiveMapPage() {
                 "session_id, exercise_id, patrol_id, patrol_code, patrol_name, mission_id, mission_name, current_status, last_status_at, is_online, last_latitude, last_longitude, last_accuracy, last_fix_at",
               )
               .order("patrol_code", { ascending: true }),
-            supabase
-              .from("missions")
-              .select("mission_name")
-              .eq("is_enabled", true)
-              .order("sort_order", { ascending: true }),
+            missionSelectPromise,
             supabase
               .from("patrols")
               .select("id, patrol_code, patrol_name, pin_hash, is_enabled, created_at")
@@ -448,9 +486,21 @@ export function LiveMapPage() {
         console.warn("[APRS Patrol Admin] loadData avvisi parziali:", loadWarnings);
       }
 
+      const missionRows = missionResult.error ? [] : (missionResult.data ?? []);
+      setMissionCatalog(
+        missionRows.map((row) => ({
+          id: row.id as string,
+          missionCode: (row.mission_code as string) ?? "",
+          missionName: (row.mission_name as string) ?? "",
+          sortOrder: Number(row.sort_order ?? 0),
+          isEnabled: (row.is_enabled as boolean | null) !== false,
+        })),
+      );
+
       const nextMissions = Array.from(
         new Set(
-          (missionResult.error ? [] : missionResult.data ?? [])
+          missionRows
+            .filter((row) => (row.is_enabled as boolean | null) !== false)
             .map((row) => row.mission_name as string | null)
             .filter((value): value is string => Boolean(value)),
         ),
@@ -1112,6 +1162,160 @@ export function LiveMapPage() {
     setPatrolNameInput("");
     setPatrolPinInput("1234");
     setPatrolEnabledInput(true);
+  }
+
+  function resetMissionForm() {
+    setEditingMissionId(null);
+    setMissionFormCode("");
+    setMissionFormName("");
+    setMissionFormSort("0");
+    setMissionFormEnabled(true);
+  }
+
+  function startEditingMission(item: MissionCatalogItem) {
+    setEditingMissionId(item.id);
+    setMissionFormCode(item.missionCode);
+    setMissionFormName(item.missionName);
+    setMissionFormSort(String(item.sortOrder));
+    setMissionFormEnabled(item.isEnabled);
+    setAdminView("missions");
+  }
+
+  async function handleSaveMission() {
+    if (!session) {
+      setMessage("Accedi al backend per gestire le missioni.");
+      return;
+    }
+    if (!canEdit) {
+      setMessage("Profilo viewer: modifica missioni non consentita.");
+      return;
+    }
+    if (!activeExerciseId) {
+      setMessage(
+        "Nessuna esercitazione attiva (exercises.is_active): impossibile salvare missioni.",
+      );
+      return;
+    }
+    const code = missionFormCode.trim().toUpperCase().replace(/\s+/g, "_");
+    const name = missionFormName.trim();
+    const sortParsed = Number.parseInt(missionFormSort.trim(), 10);
+    const sortOrder = Number.isFinite(sortParsed) ? sortParsed : 0;
+    if (!code || code.length < 2) {
+      setMessage("Inserisci un codice missione (almeno 2 caratteri, es. ALFA).");
+      return;
+    }
+    if (!name) {
+      setMessage("Inserisci il nome missione.");
+      return;
+    }
+
+    setMissionBusy(true);
+    try {
+      if (editingMissionId) {
+        const res = await fetch("/api/missions", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session,
+            id: editingMissionId,
+            missionCode: code,
+            missionName: name,
+            sortOrder,
+            isEnabled: missionFormEnabled,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) {
+          setMessage(data.error ?? `Aggiornamento missione non riuscito (${res.status}).`);
+          return;
+        }
+        setMessage("Missione aggiornata.");
+      } else {
+        const res = await fetch("/api/missions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session,
+            exerciseId: activeExerciseId,
+            missionCode: code,
+            missionName: name,
+            sortOrder,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) {
+          setMessage(data.error ?? `Creazione missione non riuscita (${res.status}).`);
+          return;
+        }
+        setMessage("Missione creata.");
+      }
+      resetMissionForm();
+      await loadData();
+    } finally {
+      setMissionBusy(false);
+    }
+  }
+
+  async function handleToggleMissionEnabled(item: MissionCatalogItem) {
+    if (!session || !canEdit) {
+      setMessage("Profilo viewer: modifica missioni non consentita.");
+      return;
+    }
+    setMissionBusy(true);
+    try {
+      const res = await fetch("/api/missions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session,
+          id: item.id,
+          isEnabled: !item.isEnabled,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setMessage(data.error ?? `Aggiornamento non riuscito (${res.status}).`);
+        return;
+      }
+      setMessage(!item.isEnabled ? "Missione abilitata." : "Missione disabilitata.");
+      await loadData();
+    } finally {
+      setMissionBusy(false);
+    }
+  }
+
+  async function handleDeleteMission(item: MissionCatalogItem) {
+    if (!session || !canEdit) {
+      setMessage("Profilo viewer: cancellazione missioni non consentita.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Eliminare la missione «${item.missionName}» (${item.missionCode})? Le sessioni collegate perderanno il riferimento (mission_id impostato a null).`,
+      )
+    ) {
+      return;
+    }
+    setMissionBusy(true);
+    try {
+      const res = await fetch("/api/missions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session, id: item.id }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setMessage(data.error ?? `Eliminazione non riuscita (${res.status}).`);
+        return;
+      }
+      setMessage("Missione eliminata.");
+      if (editingMissionId === item.id) {
+        resetMissionForm();
+      }
+      await loadData();
+    } finally {
+      setMissionBusy(false);
+    }
   }
 
   function startEditingPatrol(item: PatrolRegistryItem) {
@@ -2033,6 +2237,8 @@ export function LiveMapPage() {
         return "live-map";
       case "Pattuglie":
         return "patrols";
+      case "Missioni":
+        return "missions";
       case "Sessioni Live":
         return "live-sessions";
       case "Accessi Admin":
@@ -2051,39 +2257,45 @@ export function LiveMapPage() {
       ? "Mappa Live Pattuglie"
       : adminView === "patrols"
         ? "Gestione Pattuglie"
-        : adminView === "live-sessions"
-          ? "Sessioni Pattuglie"
-        : adminView === "admin-access"
-          ? "Accessi Admin"
-          : adminView === "admin-accounts"
-            ? "Gestione account backend"
-          : "Export Pattuglie";
+        : adminView === "missions"
+          ? "Missioni esercitazione"
+          : adminView === "live-sessions"
+            ? "Sessioni Pattuglie"
+            : adminView === "admin-access"
+              ? "Accessi Admin"
+              : adminView === "admin-accounts"
+                ? "Gestione account backend"
+                : "Export Pattuglie";
 
   const pageEyebrow =
     adminView === "live-map"
       ? "Live Operations View"
       : adminView === "patrols"
         ? "Patrol Registry"
-        : adminView === "live-sessions"
-          ? "Patrol Sessions"
-        : adminView === "admin-access"
-          ? "Admin Audit Trail"
-          : adminView === "admin-accounts"
-            ? "Admin user registry"
-          : "Operational Export";
+        : adminView === "missions"
+          ? "Mission registry"
+          : adminView === "live-sessions"
+            ? "Patrol Sessions"
+            : adminView === "admin-access"
+              ? "Admin Audit Trail"
+              : adminView === "admin-accounts"
+                ? "Admin user registry"
+                : "Operational Export";
 
   const pageDescription =
     adminView === "live-map"
       ? "Prima schermata reale del backend PC in Next.js: legge le pattuglie online, mostra i marker colorati per stato e consente di passare da mappa standard a ortofoto."
       : adminView === "patrols"
         ? "Anagrafica operativa pattuglie: creazione, modifica, abilitazione, cancellazione ed export."
-        : adminView === "live-sessions"
-          ? "Vista sessioni pattuglie con login, logout, stato e durata operativa."
-        : adminView === "admin-access"
-          ? "Storico accessi backend con login e logout di admin e viewer."
-          : adminView === "admin-accounts"
-            ? "Crea o modifica account admin e viewer (tabella Supabase admins). Disponibile solo in modalità Live con ruolo amministratore."
-          : "Esporta l'elenco pattuglie in formato CSV o PDF per invio rapido agli operatori.";
+        : adminView === "missions"
+          ? "Elenco missioni dell’esercitazione attiva (tabella Supabase missions): crea, modifica nome/codice/ordine, abilita o elimina. Richiede deploy con service role."
+          : adminView === "live-sessions"
+            ? "Vista sessioni pattuglie con login, logout, stato e durata operativa."
+            : adminView === "admin-access"
+              ? "Storico accessi backend con login e logout di admin e viewer."
+              : adminView === "admin-accounts"
+                ? "Crea o modifica account admin e viewer (tabella Supabase admins). Disponibile solo in modalità Live con ruolo amministratore."
+                : "Esporta l'elenco pattuglie in formato CSV o PDF per invio rapido agli operatori.";
 
   if (!authChecked) {
     return null;
@@ -2170,6 +2382,7 @@ export function LiveMapPage() {
               const isActive =
                 (item === "Mappa Live" && adminView === "live-map") ||
                 (item === "Pattuglie" && adminView === "patrols") ||
+                (item === "Missioni" && adminView === "missions") ||
                 (item === "Sessioni Live" && adminView === "live-sessions") ||
                 (item === "Accessi Admin" && adminView === "admin-access") ||
                 (item === "Admin" && adminView === "admin-accounts") ||
@@ -2921,6 +3134,200 @@ export function LiveMapPage() {
                   <button
                     className={styles.ghostButton}
                     onClick={resetPatrolForm}
+                    type="button"
+                  >
+                    Annulla / Nuova
+                  </button>
+                </div>
+              </div>
+            </section>
+          </section>
+        ) : adminView === "missions" ? (
+          <section className={styles.registryWrap}>
+            <section className={styles.panelCard}>
+              <div className={styles.panelHeader}>
+                <div className={styles.panelHeaderTitle}>
+                  <h2>Missioni</h2>
+                  <p>
+                    Elenco legato all&apos;esercitazione con{" "}
+                    <code>exercises.is_active = true</code>. Creazione e modifiche passano dall&apos;API{" "}
+                    <code>/api/missions</code> (service role). L&apos;app pattuglia legge la stessa tabella.
+                  </p>
+                </div>
+              </div>
+
+              {!supabase ? (
+                <div className={styles.listBody}>
+                  <div className={styles.emptyState}>
+                    Modalità mock: collega Supabase (variabili NEXT_PUBLIC_SUPABASE_*) per gestire le
+                    missioni.
+                  </div>
+                </div>
+              ) : !activeExerciseId ? (
+                <div className={styles.listBody}>
+                  <div className={styles.emptyState}>
+                    Nessuna esercitazione attiva su Supabase. Imposta una riga in{" "}
+                    <code>exercises</code> con <code>is_active = true</code>.
+                  </div>
+                </div>
+              ) : (
+                <div className={styles.listBody}>
+                  <table className={styles.registryTable}>
+                    <thead>
+                      <tr>
+                        <th>Codice</th>
+                        <th>Nome</th>
+                        <th>Ordine</th>
+                        <th>Stato</th>
+                        <th>Azioni</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {missionCatalog.length === 0 ? (
+                        <tr>
+                          <td colSpan={5}>
+                            <div className={styles.emptyState}>Nessuna missione ancora inserita.</div>
+                          </td>
+                        </tr>
+                      ) : (
+                        missionCatalog.map((item) => (
+                          <tr
+                            key={item.id}
+                            className={
+                              item.isEnabled
+                                ? styles.registryRowActive
+                                : styles.registryRowDisabled
+                            }
+                          >
+                            <td>{item.missionCode}</td>
+                            <td>{item.missionName}</td>
+                            <td>{item.sortOrder}</td>
+                            <td>
+                              <span
+                                className={
+                                  item.isEnabled ? styles.enabledBadge : styles.disabledBadge
+                                }
+                              >
+                                {item.isEnabled ? "Abilitata" : "Disabilitata"}
+                              </span>
+                            </td>
+                            <td>
+                              <div className={styles.tableActionRow}>
+                                <button
+                                  className={styles.tableActionPrimary}
+                                  disabled={!canEdit || missionBusy}
+                                  onClick={() => startEditingMission(item)}
+                                  type="button"
+                                >
+                                  Modifica
+                                </button>
+                                <button
+                                  className={
+                                    item.isEnabled
+                                      ? styles.tableActionDanger
+                                      : styles.tableActionGhost
+                                  }
+                                  disabled={!canEdit || missionBusy}
+                                  onClick={() => {
+                                    void handleToggleMissionEnabled(item);
+                                  }}
+                                  type="button"
+                                >
+                                  {item.isEnabled ? "Disabilita" : "Abilita"}
+                                </button>
+                                <button
+                                  className={styles.tableActionDanger}
+                                  disabled={!canEdit || missionBusy}
+                                  onClick={() => {
+                                    void handleDeleteMission(item);
+                                  }}
+                                  type="button"
+                                >
+                                  Elimina
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            <section className={styles.panelCard}>
+              <div className={styles.panelHeader}>
+                <div className={styles.panelHeaderTitle}>
+                  <h2>{editingMissionId ? "Modifica missione" : "Nuova missione"}</h2>
+                  <p>Codice univoco nell&apos;esercitazione (es. ALFA, M2). Nome visualizzato in app e filtri.</p>
+                </div>
+              </div>
+
+              <div className={styles.registryForm}>
+                <div className={styles.messageBox}>{message}</div>
+                <div className={styles.formGrid}>
+                  <div className={styles.fieldGroup}>
+                    <label htmlFor="mission-code">Codice missione</label>
+                    <input
+                      disabled={!supabase || !activeExerciseId || missionBusy}
+                      id="mission-code"
+                      onChange={(event) => setMissionFormCode(event.target.value)}
+                      placeholder="ALFA"
+                      value={missionFormCode}
+                    />
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <label htmlFor="mission-name">Nome missione</label>
+                    <input
+                      disabled={!supabase || !activeExerciseId || missionBusy}
+                      id="mission-name"
+                      onChange={(event) => setMissionFormName(event.target.value)}
+                      placeholder="Missione Alfa"
+                      value={missionFormName}
+                    />
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <label htmlFor="mission-sort">Ordine (sort)</label>
+                    <input
+                      disabled={!supabase || !activeExerciseId || missionBusy}
+                      id="mission-sort"
+                      inputMode="numeric"
+                      onChange={(event) => setMissionFormSort(event.target.value)}
+                      placeholder="0"
+                      value={missionFormSort}
+                    />
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <label>Abilitazione</label>
+                    <div className={styles.checkboxRow}>
+                      <input
+                        checked={missionFormEnabled}
+                        disabled={!supabase || !activeExerciseId || missionBusy}
+                        id="mission-enabled"
+                        onChange={(event) => setMissionFormEnabled(event.target.checked)}
+                        type="checkbox"
+                      />
+                      <label htmlFor="mission-enabled">Missione selezionabile in app</label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={styles.formActions}>
+                  <button
+                    className={styles.mapAction}
+                    disabled={!canEdit || !supabase || !activeExerciseId || missionBusy}
+                    onClick={() => {
+                      void handleSaveMission();
+                    }}
+                    type="button"
+                  >
+                    {editingMissionId ? "Salva modifica" : "Crea missione"}
+                  </button>
+                  <button
+                    className={styles.ghostButton}
+                    disabled={missionBusy}
+                    onClick={resetMissionForm}
                     type="button"
                   >
                     Annulla / Nuova
