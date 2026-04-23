@@ -2238,6 +2238,7 @@ export function LiveMapPage() {
       case "Pattuglie":
         return "patrols";
       case "Missioni":
+      case "Esercitazioni":
         return "missions";
       case "Sessioni Live":
         return "live-sessions";
@@ -2308,7 +2309,10 @@ export function LiveMapPage() {
           <div className={styles.authLogoWrap}>
             <img alt="Logo ANSMI" className={styles.authLogo} src="/logo_ansmi.png" />
           </div>
-          <span className={styles.brandTag}>APRS Patrol Admin</span>
+          <div className={styles.tocBrandBlock}>
+            <span className={styles.tocBrandLine1}>Tactical operations</span>
+            <span className={styles.tocBrandLine2}>Center</span>
+          </div>
           <h1 className={styles.authTitle}>Accesso Backend</h1>
           <p className={styles.authText}>
             Login amministratore o visualizzatore per entrare nel pannello PC.
@@ -2367,11 +2371,12 @@ export function LiveMapPage() {
                 src="/logo_ansmi.png"
               />
             </div>
-            <span className={styles.brandTag}>APRS Patrol Admin</span>
-            <strong className={styles.brandTitle}>Tactical Map</strong>
+            <div className={styles.tocBrandBlock}>
+              <span className={styles.tocBrandLine1}>Tactical operations</span>
+              <span className={styles.tocBrandLine2}>Center</span>
+            </div>
             <p className={styles.brandSubtext}>
-              Pannello PC per monitoraggio pattuglie, controllo live e gestione
-              operativa su mappa.
+              Centro operativo: missioni, mappa live pattuglie, notifiche e anagrafica.
             </p>
           </div>
 
@@ -2382,7 +2387,8 @@ export function LiveMapPage() {
               const isActive =
                 (item === "Mappa Live" && adminView === "live-map") ||
                 (item === "Pattuglie" && adminView === "patrols") ||
-                (item === "Missioni" && adminView === "missions") ||
+                ((item === "Missioni" || item === "Esercitazioni") &&
+                  adminView === "missions") ||
                 (item === "Sessioni Live" && adminView === "live-sessions") ||
                 (item === "Accessi Admin" && adminView === "admin-access") ||
                 (item === "Admin" && adminView === "admin-accounts") ||

@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "APRS Patrol Admin",
+  title: "Tactical Operations Center",
   description: "Pannello PC live per monitoraggio pattuglie e mappa operativa.",
 };
 
