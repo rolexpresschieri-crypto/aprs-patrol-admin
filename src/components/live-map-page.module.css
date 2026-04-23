@@ -89,7 +89,8 @@
 .pushModalBackdrop {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  /* Sopra Leaflet (map pane ~400): modale altrimenti resta sotto la mappa e i click falliscono. */
+  z-index: 12000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -238,6 +239,94 @@
   background: #0a1022;
   border-bottom: 1px solid rgba(23, 48, 107, 0.95);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+/* Operational Map: titolo, poi legenda, poi riga pulsanti (non più tutto affiancato alla legenda). */
+.mapOperationalHeaderStack.mapHeader {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px 12px 14px;
+}
+
+.mapOperationalLegendRow {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mapOperationalLegendRow .legend {
+  justify-content: flex-start;
+  max-width: none;
+}
+
+.mapOperationalBtnRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.mapSecondScreenButton {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  background: #ffeb3b;
+  color: #0d0d0d;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.22);
+}
+
+.mapSecondScreenButton:hover {
+  filter: brightness(0.97);
+}
+
+.mapPushNotifyButton {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  background: #d91f2a;
+  color: #ffffff;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.28);
+}
+
+.mapPushNotifyButton:hover {
+  filter: brightness(1.06);
+}
+
+.mapPushNotifyButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.headerPushNotifyButton {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 800;
+  font-size: 12px;
+  cursor: pointer;
+  background: #d91f2a;
+  color: #ffffff;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+}
+
+.headerPushNotifyButton:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.headerPushNotifyButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .mapCardLive .mapHeaderTitle h2 {

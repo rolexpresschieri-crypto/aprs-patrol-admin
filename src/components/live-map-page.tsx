@@ -13,6 +13,7 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 import {
   ADMIN_SESSION_STORAGE_KEY,
   normalizeAdminRole,
@@ -195,6 +196,11 @@ export function LiveMapPage() {
     "Messaggio dal Tactical Operations Center.",
   );
   const [pushModalSelectedIds, setPushModalSelectedIds] = useState<string[]>([]);
+  const [pushPortalReady, setPushPortalReady] = useState(false);
+
+  useEffect(() => {
+    setPushPortalReady(true);
+  }, []);
 
   const sidePanelsScrollRef = useRef<HTMLDivElement | null>(null);
   const mainScrollRef = useRef<HTMLElement | null>(null);
@@ -2236,7 +2242,7 @@ export function LiveMapPage() {
             </button>
             {adminView === "live-map" && onlinePatrolsForPush.length > 0 ? (
               <button
-                className={styles.refreshButton}
+                className={styles.headerPushNotifyButton}
                 title="Scegli una o più pattuglie online e il testo del messaggio"
                 type="button"
                 disabled={loading}
@@ -2362,7 +2368,7 @@ export function LiveMapPage() {
         <section className={`${styles.mainGrid} ${styles.mapMainGrid}`}>
           <article className={`${styles.mapCard} ${styles.mapCardLive}`}>
             <div
-              className={`${styles.mapHeader} ${styles.mapLiveOperationalHeaderSticky}`}
+              className={`${styles.mapHeader} ${styles.mapLiveOperationalHeaderSticky} ${styles.mapOperationalHeaderStack}`}
               style={{ top: liveMapStickyBandTopPx }}
             >
               <div className={styles.mapHeaderTitle}>
@@ -2372,7 +2378,7 @@ export function LiveMapPage() {
                   e layer Standard / Ortofoto.
                 </p>
               </div>
-              <div className={styles.mapHeaderActions}>
+              <div className={styles.mapOperationalLegendRow}>
                 <div className={styles.legend}>
                   {statusOptions
                     .filter((item) => item.value !== "all")
@@ -2386,8 +2392,10 @@ export function LiveMapPage() {
                       </span>
                     ))}
                 </div>
+              </div>
+              <div className={styles.mapOperationalBtnRow}>
                 <button
-                  className={styles.ghostButton}
+                  className={styles.mapSecondScreenButton}
                   onClick={openFullscreenMap}
                   type="button"
                 >
@@ -2395,7 +2403,7 @@ export function LiveMapPage() {
                 </button>
                 {onlinePatrolsForPush.length > 0 ? (
                   <button
-                    className={styles.mapAction}
+                    className={styles.mapPushNotifyButton}
                     type="button"
                     title="Scegli pattuglie e testo messaggio"
                     onClick={() => {
@@ -2550,7 +2558,7 @@ export function LiveMapPage() {
                         Apri dettaglio
                       </button>
                       <button
-                        className={styles.mapAction}
+                        className={styles.mapPushNotifyButton}
                         type="button"
                         onClick={() => {
                           openOperationalPushModal(
@@ -2692,7 +2700,7 @@ export function LiveMapPage() {
                           Dettaglio
                         </button>
                         <button
-                          className={styles.mapAction}
+                          className={styles.mapPushNotifyButton}
                           type="button"
                           onClick={() => {
                             openOperationalPushModal([patrol.sessionId]);
@@ -3499,114 +3507,117 @@ export function LiveMapPage() {
       </div>
       </div>
 
-      {pushModalOpen ? (
-        <div
-          className={styles.pushModalBackdrop}
-          onClick={() => {
-            if (!loading) {
-              closeOperationalPushModal();
-            }
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Escape" && !loading) {
-              closeOperationalPushModal();
-            }
-          }}
-          role="presentation"
-        >
-          <div
-            aria-labelledby="push-modal-title"
-            aria-modal="true"
-            className={styles.pushModal}
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-          >
-            <h2 id="push-modal-title">Notifica push pattuglie</h2>
-            <p className={styles.pushModalHint}>
-              Elenco pattuglie <strong>online</strong>: spunta chi deve ricevere il messaggio.
-              All&apos;apertura sono selezionate <strong>tutte</strong>; puoi deselezionare o
-              usare i pulsanti rapidi.
-            </p>
-            <div className={styles.pushModalToolbar}>
-              <button
-                className={styles.mapAction}
-                disabled={loading}
-                onClick={setPushModalSelectAllOnline}
-                type="button"
+      {pushPortalReady && pushModalOpen
+        ? createPortal(
+            <div
+              className={styles.pushModalBackdrop}
+              onClick={() => {
+                if (!loading) {
+                  closeOperationalPushModal();
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && !loading) {
+                  closeOperationalPushModal();
+                }
+              }}
+              role="presentation"
+            >
+              <div
+                aria-labelledby="push-modal-title"
+                aria-modal="true"
+                className={styles.pushModal}
+                onClick={(event) => event.stopPropagation()}
+                role="dialog"
               >
-                Seleziona tutte
-              </button>
-              <button
-                className={styles.ghostButton}
-                disabled={loading}
-                onClick={setPushModalClearSelection}
-                type="button"
-              >
-                Deseleziona tutte
-              </button>
-            </div>
-            <div className={styles.pushModalList}>
-              {onlinePatrolsForPush.map((p) => {
-                const inputId = `push-modal-cb-${p.sessionId}`;
-                return (
-                  <div className={styles.pushModalRow} key={p.sessionId}>
-                    <input
-                      checked={pushModalSelectedIds.includes(p.sessionId)}
-                      disabled={loading}
-                      id={inputId}
-                      onChange={() => {
-                        togglePushModalSession(p.sessionId);
-                      }}
-                      type="checkbox"
-                    />
-                    <label className={styles.pushModalRowLabel} htmlFor={inputId}>
-                      <span className={styles.pushModalRowCode}>{p.patrolCode}</span>
-                      {" — "}
-                      {p.patrolName}
-                      {p.missionName ? (
-                        <span style={{ color: "#8a93ab", fontSize: 12 }}>
-                          {" "}
-                          · {p.missionName}
-                        </span>
-                      ) : null}
-                    </label>
-                  </div>
-                );
-              })}
-            </div>
-            <label className={styles.pushModalHint} htmlFor="push-modal-body">
-              Testo del messaggio
-            </label>
-            <textarea
-              className={styles.pushModalTextarea}
-              disabled={loading}
-              id="push-modal-body"
-              onChange={(event) => setPushModalBody(event.target.value)}
-              value={pushModalBody}
-            />
-            <div className={styles.pushModalActions}>
-              <button
-                className={styles.ghostButton}
-                disabled={loading}
-                onClick={closeOperationalPushModal}
-                type="button"
-              >
-                Annulla
-              </button>
-              <button
-                className={styles.refreshButton}
-                disabled={loading}
-                onClick={() => {
-                  void submitOperationalPushModal();
-                }}
-                type="button"
-              >
-                Invia
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+                <h2 id="push-modal-title">Notifica push pattuglie</h2>
+                <p className={styles.pushModalHint}>
+                  Elenco pattuglie <strong>online</strong>: spunta chi deve ricevere il messaggio.
+                  All&apos;apertura sono selezionate <strong>tutte</strong>; puoi deselezionare o
+                  usare i pulsanti rapidi.
+                </p>
+                <div className={styles.pushModalToolbar}>
+                  <button
+                    className={styles.mapAction}
+                    disabled={loading}
+                    onClick={setPushModalSelectAllOnline}
+                    type="button"
+                  >
+                    Seleziona tutte
+                  </button>
+                  <button
+                    className={styles.ghostButton}
+                    disabled={loading}
+                    onClick={setPushModalClearSelection}
+                    type="button"
+                  >
+                    Deseleziona tutte
+                  </button>
+                </div>
+                <div className={styles.pushModalList}>
+                  {onlinePatrolsForPush.map((p) => {
+                    const inputId = `push-modal-cb-${p.sessionId}`;
+                    return (
+                      <div className={styles.pushModalRow} key={p.sessionId}>
+                        <input
+                          checked={pushModalSelectedIds.includes(p.sessionId)}
+                          disabled={loading}
+                          id={inputId}
+                          onChange={() => {
+                            togglePushModalSession(p.sessionId);
+                          }}
+                          type="checkbox"
+                        />
+                        <label className={styles.pushModalRowLabel} htmlFor={inputId}>
+                          <span className={styles.pushModalRowCode}>{p.patrolCode}</span>
+                          {" — "}
+                          {p.patrolName}
+                          {p.missionName ? (
+                            <span style={{ color: "#8a93ab", fontSize: 12 }}>
+                              {" "}
+                              · {p.missionName}
+                            </span>
+                          ) : null}
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+                <label className={styles.pushModalHint} htmlFor="push-modal-body">
+                  Testo del messaggio
+                </label>
+                <textarea
+                  className={styles.pushModalTextarea}
+                  disabled={loading}
+                  id="push-modal-body"
+                  onChange={(event) => setPushModalBody(event.target.value)}
+                  value={pushModalBody}
+                />
+                <div className={styles.pushModalActions}>
+                  <button
+                    className={styles.ghostButton}
+                    disabled={loading}
+                    onClick={closeOperationalPushModal}
+                    type="button"
+                  >
+                    Annulla
+                  </button>
+                  <button
+                    className={styles.refreshButton}
+                    disabled={loading}
+                    onClick={() => {
+                      void submitOperationalPushModal();
+                    }}
+                    type="button"
+                  >
+                    Invia
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }
