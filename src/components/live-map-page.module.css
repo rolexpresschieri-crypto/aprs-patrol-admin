@@ -534,10 +534,11 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: 8px;
+  /* Distanza tra le due righe proporzionale al font, allineata all’interlinea (vedi line-height) */
+  gap: 0.22em;
   width: 100%;
   max-width: 100%;
-  padding: 18px 14px;
+  padding: 7px 14px 8px;
   border-radius: 12px;
   border: 2px solid rgba(0, 0, 0, 0.18);
   background: #ef8511;
@@ -554,8 +555,12 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #000000;
-  line-height: 1.12;
+  /* Stessa interlinea su entrambe le righe */
+  line-height: 1.28;
+  margin: 0;
   text-shadow: none;
+  -webkit-text-stroke: 0.45px #000000;
+  paint-order: stroke fill;
 }
 
 .authCard .tocBrandBlock {
@@ -565,6 +570,8 @@
 .authCard .tocBrandLine1,
 .authCard .tocBrandLine2 {
   font-size: clamp(19px, 5.2vw, 28px);
+  line-height: 1.28;
+  -webkit-text-stroke: 0.45px #000000;
 }
 
 .brandSubtext {
