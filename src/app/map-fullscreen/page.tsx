@@ -43,6 +43,10 @@ export default function FullscreenMapPage() {
   const [lastRefreshAt, setLastRefreshAt] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [session, setSession] = useState<AdminSessionData | null>(null);
+  /** Solo waypoint dell’esercitazione attiva (`is_active`), come in app pattuglia. */
+  const [tacticalPointsExerciseId, setTacticalPointsExerciseId] = useState<
+    string | null
+  >(null);
   const mapFullscreenTargetRef = useRef<HTMLDivElement | null>(null);
 
   const toggleMapFullscreen = useCallback(() => {
@@ -78,27 +82,43 @@ export default function FullscreenMapPage() {
       return;
     }
 
+    if (!tacticalPointsExerciseId) {
+      setWaypoints([]);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("tactical_map_points")
       .select("*")
+      .eq("exercise_id", tacticalPointsExerciseId)
       .order("created_at", { ascending: false })
       .limit(400);
 
     if (!error && data) {
       setWaypoints(tacticalWaypointsFromRows(data as Record<string, unknown>[]));
     }
-  }, [supabase]);
+  }, [supabase, tacticalPointsExerciseId]);
 
   const loadData = useCallback(async () => {
     if (!supabase) {
       setPatrols(mockPatrols);
       setWaypoints(mockWaypoints);
+      setTacticalPointsExerciseId(null);
       setMessage("Supabase non configurato: visualizzazione mock attiva.");
       setLastRefreshAt(new Date().toISOString());
       return;
     }
 
     try {
+      const activeExRes = await supabase
+        .from("exercises")
+        .select("id")
+        .eq("is_active", true)
+        .maybeSingle();
+
+      const activeWpId = (activeExRes.data?.id as string | undefined) ?? null;
+      setTacticalPointsExerciseId(activeWpId);
+
       const patrolQuery = supabase
         .from("active_patrol_summaries")
         .select(
@@ -106,15 +126,21 @@ export default function FullscreenMapPage() {
         )
         .order("patrol_code", { ascending: true });
 
-      const waypointQuery = supabase
-        .from("tactical_map_points")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(400);
+      const waypointPromise = (async () => {
+        if (activeWpId === null) {
+          return { data: [] as Record<string, unknown>[], error: null as null };
+        }
+        return supabase
+          .from("tactical_map_points")
+          .select("*")
+          .eq("exercise_id", activeWpId)
+          .order("created_at", { ascending: false })
+          .limit(400);
+      })();
 
       const [patrolRes, waypointRes] = await Promise.all([
         patrolQuery,
-        waypointQuery,
+        waypointPromise,
       ]);
 
       if (patrolRes.error) {
@@ -204,7 +230,7 @@ export default function FullscreenMapPage() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [refreshWaypointsOnly, session, supabase]);
+  }, [refreshWaypointsOnly, session, supabase, tacticalPointsExerciseId]);
 
   if (!authChecked) {
     return null;

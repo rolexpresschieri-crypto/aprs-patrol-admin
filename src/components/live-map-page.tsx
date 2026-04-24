@@ -706,16 +706,19 @@ export function LiveMapPage() {
       let wpRes;
 
       try {
-        wpRes = await raceSupabaseBatch(
-          Promise.resolve(
-            supabase
-              .from("tactical_map_points")
-              .select("*")
-              .order("created_at", { ascending: false })
-              .limit(400),
-          ),
-          "Lettura waypoint",
-        );
+        const waypointPromise = (async () => {
+          if (missionContextExerciseId === null) {
+            return { data: [] as Record<string, unknown>[], error: null as null };
+          }
+          return supabase
+            .from("tactical_map_points")
+            .select("*")
+            .eq("exercise_id", missionContextExerciseId)
+            .order("created_at", { ascending: false })
+            .limit(400);
+        })();
+
+        wpRes = await raceSupabaseBatch(waypointPromise, "Lettura waypoint");
       } catch (batchErr) {
         const msg =
           batchErr instanceof Error ? batchErr.message : String(batchErr);
@@ -778,9 +781,15 @@ export function LiveMapPage() {
       return;
     }
 
+    if (!activeExerciseId) {
+      setWaypoints([]);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("tactical_map_points")
       .select("*")
+      .eq("exercise_id", activeExerciseId)
       .order("created_at", { ascending: false })
       .limit(400);
 
@@ -792,7 +801,7 @@ export function LiveMapPage() {
         `Aggiornamento waypoint: ${error.message}`,
       );
     }
-  }, [supabase]);
+  }, [supabase, activeExerciseId]);
 
   useEffect(() => {
     if (!authChecked || !session) {
@@ -824,7 +833,7 @@ export function LiveMapPage() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [authChecked, refreshWaypointsOnly, session, supabase]);
+  }, [authChecked, refreshWaypointsOnly, session, supabase, activeExerciseId]);
 
   useEffect(() => {
     if (!authChecked || !session) {

@@ -109,9 +109,15 @@ export function TacticalWaypointsFullPage() {
       return;
     }
 
+    if (!waypointExerciseId) {
+      setWaypoints([]);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("tactical_map_points")
       .select("*")
+      .eq("exercise_id", waypointExerciseId)
       .order("created_at", { ascending: false })
       .limit(400);
 
@@ -121,7 +127,7 @@ export function TacticalWaypointsFullPage() {
     } else if (error) {
       setWaypointFeedError(`Aggiornamento waypoint: ${error.message}`);
     }
-  }, [supabase]);
+  }, [supabase, waypointExerciseId]);
 
   const loadWaypointPageData = useCallback(async () => {
     if (!supabase) {
@@ -134,38 +140,21 @@ export function TacticalWaypointsFullPage() {
 
     setLoading(true);
     try {
-      let wpRes;
       let exRes;
       let activeExerciseRes;
 
       try {
-        [wpRes, exRes, activeExerciseRes] = await raceSupabaseBatch(
+        [exRes, activeExerciseRes] = await raceSupabaseBatch(
           Promise.all([
-            supabase
-              .from("tactical_map_points")
-              .select("*")
-              .order("created_at", { ascending: false })
-              .limit(400),
             supabase.from("exercises").select("id, title, is_active").order("title"),
             supabase.from("exercises").select("id, title").eq("is_active", true).maybeSingle(),
           ]),
-          "Lettura waypoint ed esercitazioni",
+          "Lettura esercitazioni",
         );
       } catch (batchErr) {
         const msg = batchErr instanceof Error ? batchErr.message : String(batchErr);
-        wpRes = { data: [], error: { message: msg } };
-        exRes = { data: [], error: null };
+        exRes = { data: [], error: { message: msg } };
         activeExerciseRes = { data: null, error: null };
-      }
-
-      if (!wpRes.error && wpRes.data) {
-        setWaypoints(tacticalWaypointsFromRows(wpRes.data as Record<string, unknown>[]));
-        setWaypointFeedError(null);
-      } else if (wpRes.error) {
-        setWaypointFeedError(
-          `Lettura waypoint non riuscita: ${wpRes.error.message}. Verifica tabella e policy RLS su tactical_map_points.`,
-        );
-        setWaypoints([]);
       }
 
       let nextExercises: ExerciseOption[] = [];
@@ -194,6 +183,42 @@ export function TacticalWaypointsFullPage() {
       }
 
       setExerciseOptions(nextExercises);
+
+      const wpFilterId =
+        (activeExerciseRes.data?.id as string | undefined) ??
+        nextExercises[0]?.id ??
+        null;
+
+      let wpRes: { data: unknown[] | null; error: { message: string } | null };
+      if (wpFilterId) {
+        try {
+          wpRes = await raceSupabaseBatch(
+            (async () =>
+              supabase
+                .from("tactical_map_points")
+                .select("*")
+                .eq("exercise_id", wpFilterId)
+                .order("created_at", { ascending: false })
+                .limit(400))(),
+            "Lettura waypoint",
+          );
+        } catch (batchErr) {
+          const msg = batchErr instanceof Error ? batchErr.message : String(batchErr);
+          wpRes = { data: [], error: { message: msg } };
+        }
+      } else {
+        wpRes = { data: [], error: null };
+      }
+
+      if (!wpRes.error && wpRes.data) {
+        setWaypoints(tacticalWaypointsFromRows(wpRes.data as Record<string, unknown>[]));
+        setWaypointFeedError(null);
+      } else if (wpRes.error) {
+        setWaypointFeedError(
+          `Lettura waypoint non riuscita: ${wpRes.error.message}. Verifica tabella e policy RLS su tactical_map_points.`,
+        );
+        setWaypoints([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -222,6 +247,13 @@ export function TacticalWaypointsFullPage() {
   }, [exerciseOptions]);
 
   useEffect(() => {
+    if (!authChecked || !session || !waypointExerciseId) {
+      return;
+    }
+    void refreshWaypointsOnly();
+  }, [authChecked, refreshWaypointsOnly, session, waypointExerciseId]);
+
+  useEffect(() => {
     if (!authChecked || !supabase || !session) {
       return;
     }
@@ -244,7 +276,7 @@ export function TacticalWaypointsFullPage() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [authChecked, refreshWaypointsOnly, session, supabase]);
+  }, [authChecked, refreshWaypointsOnly, session, supabase, waypointExerciseId]);
 
   useEffect(() => {
     const editId = searchParams.get("edit");
