@@ -2512,9 +2512,12 @@ export function LiveMapPage() {
             <img alt="Logo ANSMI" className={styles.authLogo} src="/logo_ansmi.png" />
           </div>
           <div className={styles.tocBrandBlock}>
-            <span className={styles.tocBrandLine1}>Tactical</span>
-            <span className={styles.tocBrandLine2}>Operations</span>
-            <span className={styles.tocBrandLine3}>Center</span>
+            <img
+              alt="Tactical Operations Center"
+              className={styles.tocBrandImg}
+              decoding="async"
+              src="/toc_brand.png"
+            />
           </div>
           <h1 className={styles.authTitle}>Accesso Backend</h1>
           <p className={styles.authText}>
@@ -2575,9 +2578,12 @@ export function LiveMapPage() {
               />
             </div>
             <div className={styles.tocBrandBlock}>
-              <span className={styles.tocBrandLine1}>Tactical</span>
-              <span className={styles.tocBrandLine2}>Operations</span>
-              <span className={styles.tocBrandLine3}>Center</span>
+              <img
+                alt="Tactical Operations Center"
+                className={styles.tocBrandImg}
+                decoding="async"
+                src="/toc_brand.png"
+              />
             </div>
             <p className={styles.brandSubtext}>
               Centro operativo: missioni, mappa live pattuglie, notifiche e anagrafica.
