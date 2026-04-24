@@ -551,11 +551,13 @@
 
 /* Login: badge un po’ più largo */
 .authCard .tocBrandBlock {
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
+/* Login: badge TOC compatto (stesso schermo senza scroll su laptop / mobile) */
 .authCard .tocBrandImg {
-  max-width: min(100%, 440px);
+  max-width: min(92vw, 240px);
+  filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.28));
 }
 
 /* Sidebar: stessa immagine, scala con la colonna */
@@ -1736,48 +1738,55 @@
 
 .authShell {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 12px 16px;
   background: #06080f;
+  box-sizing: border-box;
 }
 
 .authCard {
-  width: min(100%, 460px);
+  width: min(100%, 420px);
   display: grid;
-  gap: 14px;
-  border-radius: 24px;
+  gap: 10px;
+  border-radius: 20px;
   border: 1px solid #17306b;
   background: linear-gradient(180deg, #091122 0%, #060b16 100%);
-  padding: 28px;
+  padding: 18px 20px 20px;
+  box-sizing: border-box;
 }
 
 .authLogoWrap {
   display: flex;
   justify-content: center;
-  padding-bottom: 8px;
+  padding-bottom: 2px;
 }
 
 .authLogo {
-  width: 120px;
-  height: 120px;
+  width: 72px;
+  height: 72px;
   object-fit: contain;
 }
 
 .authTitle {
-  font-size: 32px;
+  font-size: 24px;
   font-weight: 800;
+  line-height: 1.15;
+  margin: 0;
 }
 
 .authText {
   color: #9fabc7;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.45;
+  margin: 0;
 }
 
 .authForm {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .authInput {
@@ -1786,13 +1795,23 @@
   border: 1px solid #2b4278;
   background: #09101f;
   color: #edf2ff;
-  padding: 12px 14px;
+  padding: 10px 12px;
   outline: none;
+  font-size: 15px;
 }
 
 .authForm .authInput::placeholder {
   color: #6b738c;
   opacity: 1;
+}
+
+.authForm .mapAction {
+  padding: 10px 14px;
+  font-size: 15px;
+}
+
+.authForm .fieldGroup {
+  gap: 6px;
 }
 
 @media (max-width: 1360px) {
