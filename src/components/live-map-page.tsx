@@ -374,15 +374,22 @@ export function LiveMapPage() {
       let missionResult;
       let registryResult;
 
+      const patrolSummarySelect = supabase
+        .from("active_patrol_summaries")
+        .select(
+          "session_id, exercise_id, patrol_id, patrol_code, patrol_name, mission_id, mission_name, current_status, last_status_at, is_online, last_latitude, last_longitude, last_accuracy, last_fix_at",
+        );
+      const patrolSummaryQuery =
+        missionContextExerciseId !== null
+          ? patrolSummarySelect
+              .eq("exercise_id", missionContextExerciseId)
+              .order("patrol_code", { ascending: true })
+          : patrolSummarySelect.order("patrol_code", { ascending: true });
+
       try {
         [patrolResult, missionResult, registryResult] = await raceSupabaseBatch(
           Promise.all([
-            supabase
-              .from("active_patrol_summaries")
-              .select(
-                "session_id, exercise_id, patrol_id, patrol_code, patrol_name, mission_id, mission_name, current_status, last_status_at, is_online, last_latitude, last_longitude, last_accuracy, last_fix_at",
-              )
-              .order("patrol_code", { ascending: true }),
+            patrolSummaryQuery,
             missionSelectPromise,
             supabase
               .from("patrols")
@@ -404,6 +411,41 @@ export function LiveMapPage() {
       let sessionsResult;
       let statusEventsResult;
 
+      const patrolSessionsSelect = supabase
+        .from("patrol_sessions")
+        .select(
+          "id, exercise_id, patrol_id, mission_id, is_online, login_at, logout_at, last_status_at, current_status, patrols!inner(patrol_code, patrol_name), missions(mission_name)",
+        );
+      const patrolSessionsQuery =
+        missionContextExerciseId !== null
+          ? patrolSessionsSelect
+              .eq("exercise_id", missionContextExerciseId)
+              .order("login_at", { ascending: false })
+              .limit(100)
+          : patrolSessionsSelect.order("login_at", { ascending: false }).limit(100);
+
+      const statusEventsSelect = supabase
+        .from("patrol_status_events")
+        .select(
+          "session_id, mission_id, status, changed_at, missions(mission_name)",
+        )
+        .in("status", [
+          "start_mission",
+          "moving",
+          "target",
+          "operation_start",
+          "operation_end",
+          "standby",
+          "end_mission",
+        ]);
+      const statusEventsQuery =
+        missionContextExerciseId !== null
+          ? statusEventsSelect
+              .eq("exercise_id", missionContextExerciseId)
+              .order("changed_at", { ascending: true })
+              .limit(500)
+          : statusEventsSelect.order("changed_at", { ascending: true }).limit(500);
+
       try {
         [accessResult, sessionsResult, statusEventsResult] =
           await raceSupabaseBatch(
@@ -413,29 +455,8 @@ export function LiveMapPage() {
                 .select("id, admin_code, admin_name, role, event_type, occurred_at")
                 .order("occurred_at", { ascending: false })
                 .limit(100),
-              supabase
-                .from("patrol_sessions")
-                .select(
-                  "id, exercise_id, patrol_id, mission_id, is_online, login_at, logout_at, last_status_at, current_status, patrols!inner(patrol_code, patrol_name), missions(mission_name)",
-                )
-                .order("login_at", { ascending: false })
-                .limit(100),
-              supabase
-                .from("patrol_status_events")
-                .select(
-                  "session_id, mission_id, status, changed_at, missions(mission_name)",
-                )
-                .in("status", [
-                  "start_mission",
-                  "moving",
-                  "target",
-                  "operation_start",
-                  "operation_end",
-                  "standby",
-                  "end_mission",
-                ])
-                .order("changed_at", { ascending: true })
-                .limit(500),
+              patrolSessionsQuery,
+              statusEventsQuery,
             ]),
             "Storico sessioni ed eventi",
           );
@@ -1849,9 +1870,13 @@ export function LiveMapPage() {
 
     const sessionIdSet = new Set<string>();
 
-    const summariesResult = await supabase
+    let summariesQuery = supabase
       .from("active_patrol_summaries")
       .select("session_id");
+    if (activeExerciseId) {
+      summariesQuery = summariesQuery.eq("exercise_id", activeExerciseId);
+    }
+    const summariesResult = await summariesQuery;
 
     if (summariesResult.error) {
       throw summariesResult.error;
@@ -1865,10 +1890,17 @@ export function LiveMapPage() {
     }
 
     if (sessionIdSet.size === 0) {
-      const sessionsResult = await supabase
+      let sessionsOnlineQuery = supabase
         .from("patrol_sessions")
         .select("id")
         .eq("is_online", true);
+      if (activeExerciseId) {
+        sessionsOnlineQuery = sessionsOnlineQuery.eq(
+          "exercise_id",
+          activeExerciseId,
+        );
+      }
+      const sessionsResult = await sessionsOnlineQuery;
 
       if (sessionsResult.error) {
         throw sessionsResult.error;

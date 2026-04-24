@@ -119,12 +119,18 @@ export default function FullscreenMapPage() {
       const activeWpId = (activeExRes.data?.id as string | undefined) ?? null;
       setTacticalPointsExerciseId(activeWpId);
 
-      const patrolQuery = supabase
-        .from("active_patrol_summaries")
-        .select(
-          "session_id, exercise_id, patrol_id, patrol_code, patrol_name, mission_id, mission_name, current_status, last_status_at, is_online, last_latitude, last_longitude, last_accuracy, last_fix_at",
-        )
-        .order("patrol_code", { ascending: true });
+      const patrolPromise = (async () => {
+        if (activeWpId === null) {
+          return { data: [] as Record<string, unknown>[], error: null as null };
+        }
+        return supabase
+          .from("active_patrol_summaries")
+          .select(
+            "session_id, exercise_id, patrol_id, patrol_code, patrol_name, mission_id, mission_name, current_status, last_status_at, is_online, last_latitude, last_longitude, last_accuracy, last_fix_at",
+          )
+          .eq("exercise_id", activeWpId)
+          .order("patrol_code", { ascending: true });
+      })();
 
       const waypointPromise = (async () => {
         if (activeWpId === null) {
@@ -139,7 +145,7 @@ export default function FullscreenMapPage() {
       })();
 
       const [patrolRes, waypointRes] = await Promise.all([
-        patrolQuery,
+        patrolPromise,
         waypointPromise,
       ]);
 
