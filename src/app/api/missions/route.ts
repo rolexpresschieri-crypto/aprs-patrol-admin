@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 import { normalizeAdminRole, type AdminSessionData } from "@/lib/admin-auth";
+import { resolveOwnerAdminId } from "@/lib/resolve-owner-admin";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -32,10 +33,13 @@ function requireAdminSession(session: unknown): AdminSessionData | null {
   if (!code) {
     return null;
   }
+  const adminIdRaw = typeof s.adminId === "string" ? s.adminId.trim() : "";
+  const adminId = adminIdRaw && isUuid(adminIdRaw) ? adminIdRaw : undefined;
   return {
     code,
     name: typeof s.name === "string" ? s.name : code,
     role: normalizeAdminRole(s.role as string | null),
+    ...(adminId ? { adminId } : {}),
   };
 }
 
@@ -90,6 +94,29 @@ export async function POST(request: Request) {
     typeof payload.exerciseId === "string" ? payload.exerciseId.trim() : "";
   if (!exerciseId || !isUuid(exerciseId)) {
     return NextResponse.json({ error: "exerciseId UUID obbligatorio" }, { status: 400 });
+  }
+
+  const ownerRes = await resolveOwnerAdminId(admin, session);
+  if ("error" in ownerRes) {
+    return ownerRes.error;
+  }
+  const ownerId = ownerRes.id;
+
+  const { data: exerciseOwned, error: exErr } = await admin
+    .from("exercises")
+    .select("id")
+    .eq("id", exerciseId)
+    .eq("owner_admin_id", ownerId)
+    .maybeSingle();
+
+  if (exErr) {
+    return NextResponse.json({ error: exErr.message }, { status: 500 });
+  }
+  if (!exerciseOwned) {
+    return NextResponse.json(
+      { error: "Esercitazione non trovata o non autorizzata per questo account." },
+      { status: 403 },
+    );
   }
 
   const rawCode = typeof payload.missionCode === "string" ? payload.missionCode.trim() : "";
@@ -179,6 +206,42 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "id UUID obbligatorio" }, { status: 400 });
   }
 
+  const ownerRes = await resolveOwnerAdminId(admin, session);
+  if ("error" in ownerRes) {
+    return ownerRes.error;
+  }
+  const ownerId = ownerRes.id;
+
+  const { data: missionRow, error: missionSelErr } = await admin
+    .from("missions")
+    .select("id, exercise_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (missionSelErr) {
+    return NextResponse.json({ error: missionSelErr.message }, { status: 500 });
+  }
+  if (!missionRow) {
+    return NextResponse.json({ error: "Missione non trovata." }, { status: 404 });
+  }
+
+  const { data: exerciseOwned, error: exOwnErr } = await admin
+    .from("exercises")
+    .select("id")
+    .eq("id", missionRow.exercise_id as string)
+    .eq("owner_admin_id", ownerId)
+    .maybeSingle();
+
+  if (exOwnErr) {
+    return NextResponse.json({ error: exOwnErr.message }, { status: 500 });
+  }
+  if (!exerciseOwned) {
+    return NextResponse.json(
+      { error: "Missione non autorizzata per questo account." },
+      { status: 403 },
+    );
+  }
+
   const patch: Record<string, string | number | boolean> = {};
   if (typeof payload.missionCode === "string") {
     const c = payload.missionCode
@@ -256,6 +319,42 @@ export async function DELETE(request: Request) {
   const id = typeof payload.id === "string" ? payload.id.trim() : "";
   if (!id || !isUuid(id)) {
     return NextResponse.json({ error: "id UUID obbligatorio" }, { status: 400 });
+  }
+
+  const ownerRes = await resolveOwnerAdminId(admin, session);
+  if ("error" in ownerRes) {
+    return ownerRes.error;
+  }
+  const ownerId = ownerRes.id;
+
+  const { data: missionRow, error: missionSelErr } = await admin
+    .from("missions")
+    .select("id, exercise_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (missionSelErr) {
+    return NextResponse.json({ error: missionSelErr.message }, { status: 500 });
+  }
+  if (!missionRow) {
+    return NextResponse.json({ error: "Missione non trovata." }, { status: 404 });
+  }
+
+  const { data: exerciseOwned, error: exOwnErr } = await admin
+    .from("exercises")
+    .select("id")
+    .eq("id", missionRow.exercise_id as string)
+    .eq("owner_admin_id", ownerId)
+    .maybeSingle();
+
+  if (exOwnErr) {
+    return NextResponse.json({ error: exOwnErr.message }, { status: 500 });
+  }
+  if (!exerciseOwned) {
+    return NextResponse.json(
+      { error: "Missione non autorizzata per questo account." },
+      { status: 403 },
+    );
   }
 
   const { error } = await admin.from("missions").delete().eq("id", id);

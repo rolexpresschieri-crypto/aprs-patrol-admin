@@ -15,6 +15,7 @@ import {
   normalizeAdminRole,
   type AdminSessionData,
 } from "@/lib/admin-auth";
+import { enrichAdminSessionWithId } from "@/lib/enrich-admin-session";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import mapStyles from "./live-map-page.module.css";
 import pageStyles from "./tactical-waypoints-full-page.module.css";
@@ -87,10 +88,15 @@ export function TacticalWaypointsFullPage() {
     if (rawSession) {
       try {
         const parsed = JSON.parse(rawSession) as AdminSessionData;
+        const aid =
+          typeof parsed.adminId === "string" && parsed.adminId.trim().length >= 32
+            ? parsed.adminId.trim()
+            : undefined;
         setSession({
           code: parsed.code,
           name: parsed.name,
           role: normalizeAdminRole(parsed.role),
+          ...(aid ? { adminId: aid } : {}),
         });
       } catch {
         window.localStorage.removeItem(ADMIN_SESSION_STORAGE_KEY);
@@ -138,6 +144,32 @@ export function TacticalWaypointsFullPage() {
       return;
     }
 
+    if (session) {
+      const enriched = await enrichAdminSessionWithId(supabase, session);
+      if (enriched.adminId && enriched.adminId !== session.adminId) {
+        setSession(enriched);
+        return;
+      }
+    }
+
+    const ownerId = session?.adminId ?? null;
+    if (!ownerId) {
+      setLoading(true);
+      try {
+        setExerciseOptions([]);
+        setWaypoints([]);
+        setWaypointFeedError(
+          "Effettua di nuovo il login nel backend principale per caricare le tue esercitazioni.",
+        );
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    const restrictExercisesToOwner =
+      normalizeAdminRole(session?.role) === "admin" && Boolean(ownerId);
+
     setLoading(true);
     try {
       let exRes;
@@ -146,8 +178,30 @@ export function TacticalWaypointsFullPage() {
       try {
         [exRes, activeExerciseRes] = await raceSupabaseBatch(
           Promise.all([
-            supabase.from("exercises").select("id, title, is_active").order("title"),
-            supabase.from("exercises").select("id, title").eq("is_active", true).maybeSingle(),
+            restrictExercisesToOwner
+              ? supabase
+                  .from("exercises")
+                  .select("id, title, is_active, owner_admin_id")
+                  .eq("owner_admin_id", ownerId)
+                  .order("title")
+              : supabase
+                  .from("exercises")
+                  .select("id, title, is_active, owner_admin_id")
+                  .order("title"),
+            restrictExercisesToOwner
+              ? supabase
+                  .from("exercises")
+                  .select("id, title")
+                  .eq("is_active", true)
+                  .eq("owner_admin_id", ownerId)
+                  .maybeSingle()
+              : supabase
+                  .from("exercises")
+                  .select("id, title")
+                  .eq("is_active", true)
+                  .order("title")
+                  .limit(1)
+                  .maybeSingle(),
           ]),
           "Lettura esercitazioni",
         );
@@ -159,7 +213,11 @@ export function TacticalWaypointsFullPage() {
 
       let nextExercises: ExerciseOption[] = [];
       if (!exRes.error && exRes.data) {
-        nextExercises = exRes.data.map((row) => ({
+        const raw = exRes.data as Record<string, unknown>[];
+        const rows = restrictExercisesToOwner
+          ? raw.filter((row) => String(row.owner_admin_id ?? "") === ownerId)
+          : raw;
+        nextExercises = rows.map((row) => ({
           id: row.id as string,
           title: ((row.title as string) ?? "").trim() || "Esercitazione",
           isActive: (row.is_active as boolean | null) ?? null,
@@ -222,7 +280,7 @@ export function TacticalWaypointsFullPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, session]);
 
   useEffect(() => {
     if (!authChecked || !session) {

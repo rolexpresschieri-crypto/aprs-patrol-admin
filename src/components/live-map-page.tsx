@@ -19,6 +19,7 @@ import {
   normalizeAdminRole,
   type AdminSessionData,
 } from "@/lib/admin-auth";
+import { enrichAdminSessionWithId } from "@/lib/enrich-admin-session";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import styles from "./live-map-page.module.css";
 import {
@@ -285,10 +286,15 @@ export function LiveMapPage() {
     if (rawSession) {
       try {
         const parsed = JSON.parse(rawSession) as AdminSessionData;
+        const aid =
+          typeof parsed.adminId === "string" && parsed.adminId.trim().length >= 32
+            ? parsed.adminId.trim()
+            : undefined;
         setSession({
           code: parsed.code,
           name: parsed.name,
           role: normalizeAdminRole(parsed.role),
+          ...(aid ? { adminId: aid } : {}),
         });
       } catch {
         window.localStorage.removeItem(ADMIN_SESSION_STORAGE_KEY);
@@ -312,6 +318,42 @@ export function LiveMapPage() {
       return;
     }
 
+    if (session) {
+      const enriched = await enrichAdminSessionWithId(supabase, session);
+      if (enriched.adminId && enriched.adminId !== session.adminId) {
+        setSession(enriched);
+        return;
+      }
+    }
+
+    const ownerId = session?.adminId ?? null;
+    const sessionRole = normalizeAdminRole(session?.role);
+    const restrictExercisesToOwner =
+      sessionRole === "admin" && Boolean(ownerId);
+
+    if (!ownerId) {
+      setLoading(true);
+      try {
+        setExerciseCatalog([]);
+        setActiveExerciseId(null);
+        setMissionCatalog([]);
+        setPatrols([]);
+        setMissions([]);
+        setWaypoints([]);
+        setRegistryItems([]);
+        setSessionRecords([]);
+        setAdminAccessEvents([]);
+        setBackendMode("live");
+        setMessage(
+          "Accedi di nuovo al backend: serve il login aggiornato per associare l’account alle tue esercitazioni.",
+        );
+        setLastRefreshAt(new Date().toISOString());
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -319,11 +361,30 @@ export function LiveMapPage() {
 
       let defaultActiveExerciseId: string | null = null;
       const [exActiveRes, exListRes] = await Promise.all([
-        supabase.from("exercises").select("id").eq("is_active", true).maybeSingle(),
-        supabase
-          .from("exercises")
-          .select("id, title, description, is_active, created_at")
-          .order("created_at", { ascending: false }),
+        restrictExercisesToOwner
+          ? supabase
+              .from("exercises")
+              .select("id")
+              .eq("is_active", true)
+              .eq("owner_admin_id", ownerId)
+              .maybeSingle()
+          : supabase
+              .from("exercises")
+              .select("id")
+              .eq("is_active", true)
+              .order("title")
+              .limit(1)
+              .maybeSingle(),
+        restrictExercisesToOwner
+          ? supabase
+              .from("exercises")
+              .select("id, title, description, is_active, created_at, owner_admin_id")
+              .eq("owner_admin_id", ownerId)
+              .order("created_at", { ascending: false })
+          : supabase
+              .from("exercises")
+              .select("id, title, description, is_active, created_at, owner_admin_id")
+              .order("created_at", { ascending: false }),
       ]);
       if (exActiveRes.error) {
         loadWarnings.push(`esercitazione attiva: ${exActiveRes.error.message}`);
@@ -336,7 +397,11 @@ export function LiveMapPage() {
         loadWarnings.push(`elenco esercitazioni: ${exListRes.error.message}`);
         setExerciseCatalog([]);
       } else {
-        exerciseRows = (exListRes.data ?? []).map((row) => ({
+        const rawList = exListRes.data ?? [];
+        const ownedOnly = restrictExercisesToOwner
+          ? rawList.filter((row) => String(row.owner_admin_id ?? "") === ownerId)
+          : rawList;
+        exerciseRows = ownedOnly.map((row) => ({
           id: row.id as string,
           title: (row.title as string) ?? "",
           description: typeof row.description === "string" ? row.description : "",
@@ -770,10 +835,14 @@ export function LiveMapPage() {
         patrolsForState.length > 0
           ? "Feed live caricato da Supabase. Marker e lista sono aggiornati dal backend."
           : "Connessione live attiva: nessuna pattuglia nel riepilogo operativo.";
+      const viewerHint =
+        sessionRole === "viewer"
+          ? " Profilo viewer: vedi tutte le esercitazioni/missioni (sola lettura, senza filtro per proprietario)."
+          : "";
       setMessage(
         loadWarnings.length > 0
-          ? `${baseLiveMessage} Alcune letture sono fallite (dettaglio in console): ${loadWarnings.join(" · ")}`
-          : baseLiveMessage,
+          ? `${baseLiveMessage}${viewerHint} Alcune letture sono fallite (dettaglio in console): ${loadWarnings.join(" · ")}`
+          : `${baseLiveMessage}${viewerHint}`,
       );
       setLastRefreshAt(new Date().toISOString());
     } catch (error) {
@@ -794,7 +863,7 @@ export function LiveMapPage() {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, session]);
 
   const refreshWaypointsOnly = useCallback(async () => {
     if (!supabase) {
@@ -1517,7 +1586,7 @@ export function LiveMapPage() {
       return;
     }
     if (item.isActive) {
-      setMessage("Questa esercitazione è già quella attiva (default app).");
+      setMessage("Questa esercitazione è già quella attiva per il tuo account (default app).");
       return;
     }
     setExerciseBusy(true);
@@ -1536,7 +1605,7 @@ export function LiveMapPage() {
         setMessage(data.error ?? `Aggiornamento non riuscito (${res.status}).`);
         return;
       }
-      setMessage("Esercitazione impostata come attiva (default).");
+      setMessage("Esercitazione impostata come attiva per il tuo account (default app).");
       await loadData();
     } finally {
       setExerciseBusy(false);
@@ -2222,7 +2291,7 @@ export function LiveMapPage() {
     try {
       const { data, error } = await supabase
         .from("admins")
-        .select("admin_code, admin_name, pin_hash, role, is_enabled")
+        .select("id, admin_code, admin_name, pin_hash, role, is_enabled")
         .eq("admin_code", code)
         .maybeSingle();
 
@@ -2244,6 +2313,7 @@ export function LiveMapPage() {
         code: data.admin_code as string,
         name: (data.admin_name as string | null) ?? code,
         role: normalizeAdminRole(data.role as string | null),
+        adminId: data.id as string,
       };
 
       await supabase.from("admin_access_events").insert({
@@ -2532,7 +2602,7 @@ export function LiveMapPage() {
         : adminView === "missions"
           ? "Missioni per l’esercitazione scelta nel menu a tendina (Supabase missions): crea, modifica nome/codice/ordine, abilita o elimina. API /api/missions con service role."
           : adminView === "exercises"
-            ? "Esercitazioni (exercises): CRUD da qui; una sola attiva come default app. Le missioni si legano per exercise_id dalla sezione Missioni."
+            ? "Esercitazioni: CRUD da qui; ogni account admin vede solo le proprie righe (owner). Una sola «attiva» per account (default app). I viewer vedono tutto in sola lettura. Missioni legate per exercise_id."
             : adminView === "live-sessions"
               ? "Vista sessioni pattuglie con login, logout, stato e durata operativa."
               : adminView === "admin-access"

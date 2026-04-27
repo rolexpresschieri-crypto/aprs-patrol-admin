@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 import { normalizeAdminRole, type AdminSessionData } from "@/lib/admin-auth";
+import { resolveOwnerAdminId } from "@/lib/resolve-owner-admin";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -32,10 +33,13 @@ function requireAdminSession(session: unknown): AdminSessionData | null {
   if (!code) {
     return null;
   }
+  const adminIdRaw = typeof s.adminId === "string" ? s.adminId.trim() : "";
+  const adminId = adminIdRaw && isUuid(adminIdRaw) ? adminIdRaw : undefined;
   return {
     code,
     name: typeof s.name === "string" ? s.name : code,
     role: normalizeAdminRole(s.role as string | null),
+    ...(adminId ? { adminId } : {}),
   };
 }
 
@@ -85,6 +89,12 @@ export async function POST(request: Request) {
     return forbidden;
   }
 
+  const ownerRes = await resolveOwnerAdminId(admin, session);
+  if ("error" in ownerRes) {
+    return ownerRes.error;
+  }
+  const ownerId = ownerRes.id;
+
   const title = typeof payload.title === "string" ? payload.title.trim() : "";
   if (!title) {
     return NextResponse.json({ error: "Titolo esercitazione obbligatorio." }, { status: 400 });
@@ -95,7 +105,10 @@ export async function POST(request: Request) {
   const isActive = payload.isActive === true;
 
   if (isActive) {
-    await admin.from("exercises").update({ is_active: false }).neq("id", "00000000-0000-0000-0000-000000000000");
+    await admin
+      .from("exercises")
+      .update({ is_active: false })
+      .eq("owner_admin_id", ownerId);
   }
 
   const { data, error } = await admin
@@ -104,6 +117,7 @@ export async function POST(request: Request) {
       title,
       description: description || null,
       is_active: isActive,
+      owner_admin_id: ownerId,
     })
     .select("id")
     .maybeSingle();
@@ -156,9 +170,32 @@ export async function PATCH(request: Request) {
     return forbidden;
   }
 
+  const ownerRes = await resolveOwnerAdminId(admin, session);
+  if ("error" in ownerRes) {
+    return ownerRes.error;
+  }
+  const ownerId = ownerRes.id;
+
   const id = typeof payload.id === "string" ? payload.id.trim() : "";
   if (!id || !isUuid(id)) {
     return NextResponse.json({ error: "id UUID obbligatorio" }, { status: 400 });
+  }
+
+  const { data: owned, error: ownErr } = await admin
+    .from("exercises")
+    .select("id")
+    .eq("id", id)
+    .eq("owner_admin_id", ownerId)
+    .maybeSingle();
+
+  if (ownErr) {
+    return NextResponse.json({ error: ownErr.message }, { status: 500 });
+  }
+  if (!owned) {
+    return NextResponse.json(
+      { error: "Esercitazione non trovata o non autorizzata per questo account." },
+      { status: 404 },
+    );
   }
 
   const patch: Record<string, string | boolean | null> = {};
@@ -180,10 +217,14 @@ export async function PATCH(request: Request) {
   }
 
   if (patch.is_active === true) {
-    await admin.from("exercises").update({ is_active: false }).neq("id", id);
+    await admin
+      .from("exercises")
+      .update({ is_active: false })
+      .eq("owner_admin_id", ownerId)
+      .neq("id", id);
   }
 
-  const { error } = await admin.from("exercises").update(patch).eq("id", id);
+  const { error } = await admin.from("exercises").update(patch).eq("id", id).eq("owner_admin_id", ownerId);
 
   if (error) {
     return NextResponse.json(
@@ -229,12 +270,35 @@ export async function DELETE(request: Request) {
     return forbidden;
   }
 
+  const ownerRes = await resolveOwnerAdminId(admin, session);
+  if ("error" in ownerRes) {
+    return ownerRes.error;
+  }
+  const ownerId = ownerRes.id;
+
   const id = typeof payload.id === "string" ? payload.id.trim() : "";
   if (!id || !isUuid(id)) {
     return NextResponse.json({ error: "id UUID obbligatorio" }, { status: 400 });
   }
 
-  const { error } = await admin.from("exercises").delete().eq("id", id);
+  const { data: owned, error: ownErr } = await admin
+    .from("exercises")
+    .select("id")
+    .eq("id", id)
+    .eq("owner_admin_id", ownerId)
+    .maybeSingle();
+
+  if (ownErr) {
+    return NextResponse.json({ error: ownErr.message }, { status: 500 });
+  }
+  if (!owned) {
+    return NextResponse.json(
+      { error: "Esercitazione non trovata o non autorizzata per questo account." },
+      { status: 404 },
+    );
+  }
+
+  const { error } = await admin.from("exercises").delete().eq("id", id).eq("owner_admin_id", ownerId);
 
   if (error) {
     return NextResponse.json(

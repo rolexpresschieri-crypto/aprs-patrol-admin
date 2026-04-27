@@ -4,8 +4,10 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ADMIN_SESSION_STORAGE_KEY,
+  normalizeAdminRole,
   type AdminSessionData,
 } from "@/lib/admin-auth";
+import { enrichAdminSessionWithId } from "@/lib/enrich-admin-session";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import styles from "./page.module.css";
 import {
@@ -67,7 +69,17 @@ export default function FullscreenMapPage() {
 
     if (rawSession) {
       try {
-        setSession(JSON.parse(rawSession) as AdminSessionData);
+        const parsed = JSON.parse(rawSession) as AdminSessionData;
+        const aid =
+          typeof parsed.adminId === "string" && parsed.adminId.trim().length >= 32
+            ? parsed.adminId.trim()
+            : undefined;
+        setSession({
+          code: parsed.code,
+          name: parsed.name,
+          role: normalizeAdminRole(parsed.role),
+          ...(aid ? { adminId: aid } : {}),
+        });
       } catch {
         window.localStorage.removeItem(ADMIN_SESSION_STORAGE_KEY);
       }
@@ -109,12 +121,44 @@ export default function FullscreenMapPage() {
       return;
     }
 
+    if (session) {
+      const enriched = await enrichAdminSessionWithId(supabase, session);
+      if (enriched.adminId && enriched.adminId !== session.adminId) {
+        setSession(enriched);
+        return;
+      }
+    }
+
+    const ownerId = session?.adminId ?? null;
+    if (!ownerId) {
+      setTacticalPointsExerciseId(null);
+      setPatrols([]);
+      setWaypoints([]);
+      setMessage(
+        "Effettua di nuovo il login nel backend principale per associare la mappa alla tua esercitazione attiva.",
+      );
+      setLastRefreshAt(new Date().toISOString());
+      return;
+    }
+
+    const restrictExercisesToOwner =
+      normalizeAdminRole(session?.role) === "admin" && Boolean(ownerId);
+
     try {
-      const activeExRes = await supabase
-        .from("exercises")
-        .select("id")
-        .eq("is_active", true)
-        .maybeSingle();
+      const activeExRes = restrictExercisesToOwner
+        ? await supabase
+            .from("exercises")
+            .select("id")
+            .eq("is_active", true)
+            .eq("owner_admin_id", ownerId)
+            .maybeSingle()
+        : await supabase
+            .from("exercises")
+            .select("id")
+            .eq("is_active", true)
+            .order("title")
+            .limit(1)
+            .maybeSingle();
 
       const activeWpId = (activeExRes.data?.id as string | undefined) ?? null;
       setTacticalPointsExerciseId(activeWpId);
@@ -191,7 +235,7 @@ export default function FullscreenMapPage() {
       setMessage(`Errore feed live: ${errorText}. Rimango in mock.`);
       setLastRefreshAt(new Date().toISOString());
     }
-  }, [supabase]);
+  }, [supabase, session]);
 
   useEffect(() => {
     if (!session) {

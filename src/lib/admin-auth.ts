@@ -6,8 +6,11 @@ export type AdminSessionData = {
   code: string;
   name: string;
   role: AdminRole;
+  /** UUID riga `public.admins.id` (impostato al login; usato per filtrare esercitazioni/missioni). */
+  adminId?: string;
 };
 
 export function normalizeAdminRole(value: string | null | undefined): AdminRole {
-  return value === "viewer" ? "viewer" : "admin";
+  const v = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return v === "viewer" ? "viewer" : "admin";
 }
