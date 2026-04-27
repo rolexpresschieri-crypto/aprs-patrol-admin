@@ -2256,69 +2256,51 @@ export function LiveMapPage() {
     return Boolean(exerciseId.trim()) && exerciseCatalog.some((e) => e.id === exerciseId);
   }
 
-  async function fetchSessionExportMatrix(exerciseId: string): Promise<{
+  async function fetchStatusEventsExportMatrix(exerciseId: string): Promise<{
     headers: string[];
     rows: string[][];
     exerciseTitle: string;
   }> {
-    const ex = exerciseCatalog.find((e) => e.id === exerciseId);
-    const exerciseTitle = ex?.title ?? "Esercitazione";
-
-    if (!supabase) {
-      throw new Error("Supabase non configurato.");
+    if (!session?.code) {
+      throw new Error("Sessione admin assente: effettua il login.");
     }
 
-    const { data, error } = await supabase
-      .from("patrol_sessions")
-      .select(
-        "id, login_at, logout_at, is_online, current_status, last_status_at, patrols!inner(patrol_code, patrol_name), missions(mission_name)",
-      )
-      .eq("exercise_id", exerciseId)
-      .order("login_at", { ascending: false })
-      .limit(5000);
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    const headers = [
-      "ID sessione",
-      "Codice pattuglia",
-      "Nome pattuglia",
-      "Missione",
-      "Login",
-      "Logout",
-      "Online",
-      "Stato corrente",
-      "Ultimo aggiornamento stato",
-    ];
-
-    const rows = (data ?? []).map((row) => {
-      const patrolRaw = row.patrols as
-        | { patrol_code?: string; patrol_name?: string }
-        | Array<{ patrol_code?: string; patrol_name?: string }>
-        | null;
-      const patrolData = Array.isArray(patrolRaw) ? patrolRaw[0] : patrolRaw;
-      const missionRaw = row.missions as
-        | { mission_name?: string }
-        | Array<{ mission_name?: string }>
-        | null;
-      const missionData = Array.isArray(missionRaw) ? missionRaw[0] : missionRaw;
-
-      return [
-        String(row.id ?? ""),
-        String(patrolData?.patrol_code ?? ""),
-        String(patrolData?.patrol_name ?? ""),
-        String(missionData?.mission_name ?? ""),
-        formatFixTimestamp(String(row.login_at ?? "")),
-        row.logout_at ? formatFixTimestamp(String(row.logout_at)) : "",
-        row.is_online ? "Sì" : "No",
-        getStatusLabel(String(row.current_status ?? "")),
-        formatFixTimestamp(String(row.last_status_at ?? "")),
-      ];
+    const res = await fetch("/api/export-session-status-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session, exerciseId }),
     });
-
-    return { headers, rows, exerciseTitle };
+    const rawText = await res.text();
+    let payload: {
+      error?: string;
+      code?: string;
+      ok?: boolean;
+      headers?: string[];
+      rows?: string[][];
+      exerciseTitle?: string;
+    } = {};
+    if (rawText.trim()) {
+      try {
+        payload = JSON.parse(rawText) as typeof payload;
+      } catch {
+        throw new Error(`Risposta export non valida (HTTP ${res.status}).`);
+      }
+    }
+    if (!res.ok) {
+      throw new Error(payload.error ?? `Errore HTTP ${res.status}`);
+    }
+    if (
+      !Array.isArray(payload.headers) ||
+      !Array.isArray(payload.rows) ||
+      typeof payload.exerciseTitle !== "string"
+    ) {
+      throw new Error("Formato risposta export incompleto.");
+    }
+    return {
+      headers: payload.headers,
+      rows: payload.rows,
+      exerciseTitle: payload.exerciseTitle,
+    };
   }
 
   async function exportSessionsToPdf() {
@@ -2328,7 +2310,7 @@ export function LiveMapPage() {
     }
     setExportSessionsBusy(true);
     try {
-      const { headers, rows, exerciseTitle } = await fetchSessionExportMatrix(
+      const { headers, rows, exerciseTitle } = await fetchStatusEventsExportMatrix(
         exportSessionsExerciseId,
       );
       const doc = new jsPDF({
@@ -2337,7 +2319,7 @@ export function LiveMapPage() {
         format: "a4",
       });
       doc.setFontSize(16);
-      doc.text("Sessioni pattuglia", 14, 14);
+      doc.text("Eventi stato (patrol_status_events)", 14, 14);
       doc.setFontSize(10);
       doc.text(`Esercitazione: ${exerciseTitle}`, 14, 20);
       doc.text(
@@ -2353,8 +2335,8 @@ export function LiveMapPage() {
         headStyles: { fillColor: [17, 113, 183] },
       });
       const safeTitle = exerciseTitle.replace(/[^\w\d]+/g, "_").slice(0, 40);
-      doc.save(`sessioni_${safeTitle}_${new Date().toISOString().slice(0, 10)}.pdf`);
-      setMessage(`Export PDF sessioni: ${rows.length} righe.`);
+      doc.save(`eventi_stato_${safeTitle}_${new Date().toISOString().slice(0, 10)}.pdf`);
+      setMessage(`Export PDF eventi stato: ${rows.length} righe (un evento per riga).`);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Export PDF non riuscito.");
     } finally {
@@ -2370,7 +2352,7 @@ export function LiveMapPage() {
     setExportSessionsBusy(true);
     try {
       const XLSX = await import("xlsx");
-      const { headers, rows, exerciseTitle } = await fetchSessionExportMatrix(
+      const { headers, rows, exerciseTitle } = await fetchStatusEventsExportMatrix(
         exportSessionsExerciseId,
       );
       const meta = [
@@ -2382,13 +2364,13 @@ export function LiveMapPage() {
       const aoa = [...meta, headers, ...rows];
       const ws = XLSX.utils.aoa_to_sheet(aoa);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Sessioni");
+      XLSX.utils.book_append_sheet(wb, ws, "Eventi stato");
       const safeTitle = exerciseTitle.replace(/[^\w\d]+/g, "_").slice(0, 40);
       XLSX.writeFile(
         wb,
-        `sessioni_${safeTitle}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        `eventi_stato_${safeTitle}_${new Date().toISOString().slice(0, 10)}.xlsx`,
       );
-      setMessage(`Export XLSX sessioni: ${rows.length} righe.`);
+      setMessage(`Export XLSX eventi stato: ${rows.length} righe (un evento per riga).`);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Export XLSX non riuscito.");
     } finally {
@@ -4178,9 +4160,10 @@ export function LiveMapPage() {
                       <thead>
                         <tr>
                           <th>Pattuglia</th>
-                          <th>Stato</th>
+                          <th>Missione</th>
+                          <th>Stato attuale</th>
                           <th>Stato dalle</th>
-                          <th>Missioni e timeline</th>
+                          <th>Stato</th>
                           <th>Login</th>
                           <th>Logout</th>
                           <th>Durata TOTALE sessione</th>
@@ -4192,6 +4175,11 @@ export function LiveMapPage() {
                           <tr key={record.id} className={styles.registryRowActive}>
                             <td>
                               {record.patrolCode} - {record.patrolName}
+                            </td>
+                            <td>
+                              {record.missionGroups.find((g) => g.missionName)?.missionName ??
+                                record.missionGroups[0]?.missionName ??
+                                "n/d"}
                             </td>
                             <td>{getStatusLabel(record.status)}</td>
                             <td>{formatFixTimestamp(record.lastStatusAt)}</td>
@@ -4712,11 +4700,13 @@ export function LiveMapPage() {
             <section className={styles.panelCard}>
               <div className={styles.panelHeader}>
                 <div className={styles.panelHeaderTitle}>
-                  <h2>Export sessioni pattuglia</h2>
+                  <h2>Export eventi stato</h2>
                   <p>
-                    Storico <code>patrol_sessions</code> per l&apos;esercitazione scelta: solo
-                    esercitazioni presenti nel catalogo del tuo login (admin = tue; viewer = tutte
-                    quelle visibili). Massimo 5000 righe per file.
+                    Una riga per ogni cambio stato / modalità da{" "}
+                    <code>patrol_status_events</code> (stessa granularità della timeline in
+                    mappa). Colonne incluse: pattuglia, missione dell&apos;evento, stato, data/ora,
+                    login/logout sessione. Admin: solo esercitazioni di tua proprietà; viewer: tutte
+                    quelle in catalogo. Massimo 50.000 righe per file (service role).
                   </p>
                 </div>
               </div>
@@ -4758,7 +4748,7 @@ export function LiveMapPage() {
                     }}
                     type="button"
                   >
-                    {exportSessionsBusy ? "Export…" : "Sessioni PDF"}
+                    {exportSessionsBusy ? "Export…" : "Eventi stato PDF"}
                   </button>
                   <button
                     className={styles.ghostButton}
@@ -4772,7 +4762,7 @@ export function LiveMapPage() {
                     }}
                     type="button"
                   >
-                    {exportSessionsBusy ? "Export…" : "Sessioni XLSX"}
+                    {exportSessionsBusy ? "Export…" : "Eventi stato XLSX"}
                   </button>
                 </div>
               </div>
