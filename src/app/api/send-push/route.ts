@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { getFirebaseAdminMessaging } from "@/lib/firebase-admin-app";
 import { normalizeAdminRole, type AdminSessionData } from "@/lib/admin-auth";
+import { resolveOwnerAdminId } from "@/lib/resolve-owner-admin";
 
 /** Deve coincidere con `toc_operational_alerts` in toc_app (MainActivity + push_notifications). */
 const ANDROID_NOTIFICATION_CHANNEL_ID = "toc_operational_alerts";
@@ -85,9 +86,40 @@ export async function POST(request: Request) {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  const ownerRes = await resolveOwnerAdminId(admin, adminSession);
+  if ("error" in ownerRes) {
+    return ownerRes.error;
+  }
+  const ownerId = ownerRes.id;
+
+  const { data: myExercises, error: exErr } = await admin
+    .from("exercises")
+    .select("id")
+    .eq("owner_admin_id", ownerId);
+
+  if (exErr) {
+    return NextResponse.json({ error: exErr.message }, { status: 500 });
+  }
+
+  const allowedExerciseIds = new Set(
+    (myExercises ?? [])
+      .map((r) => r.id as string | undefined)
+      .filter((id): id is string => Boolean(id)),
+  );
+
+  if (allowedExerciseIds.size === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Nessuna esercitazione associata a questo account: impossibile inviare push a una pattuglia.",
+      },
+      { status: 403 },
+    );
+  }
+
   const { data: sessionRow, error: sessionErr } = await admin
     .from("patrol_sessions")
-    .select("id, is_online")
+    .select("id, is_online, exercise_id")
     .eq("id", sessionId)
     .maybeSingle();
 
@@ -97,6 +129,17 @@ export async function POST(request: Request) {
 
   if (!sessionRow) {
     return NextResponse.json({ error: "Sessione pattuglia non trovata" }, { status: 404 });
+  }
+
+  const exId = sessionRow.exercise_id as string | undefined;
+  if (!exId || !allowedExerciseIds.has(exId)) {
+    return NextResponse.json(
+      {
+        error:
+          "Sessione non autorizzata per questo account (esercitazione di un altro comandante).",
+      },
+      { status: 403 },
+    );
   }
 
   if (!sessionRow.is_online) {

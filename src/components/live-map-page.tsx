@@ -426,6 +426,8 @@ export function LiveMapPage() {
       }
       setActiveExerciseId(missionContextExerciseId);
 
+      const scopedExerciseIds = exerciseRows.map((r) => r.id);
+
       const missionSelectPromise =
         missionContextExerciseId !== null
           ? supabase
@@ -444,22 +446,31 @@ export function LiveMapPage() {
         .select(
           "session_id, exercise_id, patrol_id, patrol_code, patrol_name, mission_id, mission_name, current_status, last_status_at, is_online, last_latitude, last_longitude, last_accuracy, last_fix_at",
         );
-      const patrolSummaryQuery =
+      const patrolSummaryExecutable =
         missionContextExerciseId !== null
           ? patrolSummarySelect
               .eq("exercise_id", missionContextExerciseId)
               .order("patrol_code", { ascending: true })
-          : patrolSummarySelect.order("patrol_code", { ascending: true });
+          : scopedExerciseIds.length > 0
+            ? patrolSummarySelect
+                .in("exercise_id", scopedExerciseIds)
+                .order("patrol_code", { ascending: true })
+            : Promise.resolve({ data: [] as Record<string, unknown>[], error: null as null });
+
+      let patrolRegistryQuery = supabase
+        .from("patrols")
+        .select("id, patrol_code, patrol_name, pin_hash, is_enabled, created_at, owner_admin_id")
+        .order("patrol_code", { ascending: true });
+      if (restrictExercisesToOwner) {
+        patrolRegistryQuery = patrolRegistryQuery.eq("owner_admin_id", ownerId);
+      }
 
       try {
         [patrolResult, missionResult, registryResult] = await raceSupabaseBatch(
           Promise.all([
-            patrolSummaryQuery,
+            patrolSummaryExecutable,
             missionSelectPromise,
-            supabase
-              .from("patrols")
-              .select("id, patrol_code, patrol_name, pin_hash, is_enabled, created_at")
-              .order("patrol_code", { ascending: true }),
+            patrolRegistryQuery,
           ]),
           "Riepilogo pattuglie e missioni",
         );
@@ -481,13 +492,18 @@ export function LiveMapPage() {
         .select(
           "id, exercise_id, patrol_id, mission_id, is_online, login_at, logout_at, last_status_at, current_status, patrols!inner(patrol_code, patrol_name), missions(mission_name)",
         );
-      const patrolSessionsQuery =
+      const patrolSessionsExecutable =
         missionContextExerciseId !== null
           ? patrolSessionsSelect
               .eq("exercise_id", missionContextExerciseId)
               .order("login_at", { ascending: false })
               .limit(100)
-          : patrolSessionsSelect.order("login_at", { ascending: false }).limit(100);
+          : scopedExerciseIds.length > 0
+            ? patrolSessionsSelect
+                .in("exercise_id", scopedExerciseIds)
+                .order("login_at", { ascending: false })
+                .limit(100)
+            : Promise.resolve({ data: [] as Record<string, unknown>[], error: null as null });
 
       const statusEventsSelect = supabase
         .from("patrol_status_events")
@@ -503,13 +519,18 @@ export function LiveMapPage() {
           "standby",
           "end_mission",
         ]);
-      const statusEventsQuery =
+      const statusEventsExecutable =
         missionContextExerciseId !== null
           ? statusEventsSelect
               .eq("exercise_id", missionContextExerciseId)
               .order("changed_at", { ascending: true })
               .limit(500)
-          : statusEventsSelect.order("changed_at", { ascending: true }).limit(500);
+          : scopedExerciseIds.length > 0
+            ? statusEventsSelect
+                .in("exercise_id", scopedExerciseIds)
+                .order("changed_at", { ascending: true })
+                .limit(500)
+            : Promise.resolve({ data: [] as Record<string, unknown>[], error: null as null });
 
       try {
         [accessResult, sessionsResult, statusEventsResult] =
@@ -520,8 +541,8 @@ export function LiveMapPage() {
                 .select("id, admin_code, admin_name, role, event_type, occurred_at")
                 .order("occurred_at", { ascending: false })
                 .limit(100),
-              patrolSessionsQuery,
-              statusEventsQuery,
+              patrolSessionsExecutable,
+              statusEventsExecutable,
             ]),
             "Storico sessioni ed eventi",
           );
@@ -641,18 +662,18 @@ export function LiveMapPage() {
         ),
       );
 
-      const nextRegistry: PatrolRegistryItem[] = (
-        registryResult.error ? [] : registryResult.data ?? []
-      ).map(
-        (row) => ({
-          id: row.id as string,
-          patrolCode: row.patrol_code as string,
-          patrolName: row.patrol_name as string,
-          pinHash: (row.pin_hash as string | null) ?? "",
-          isEnabled: Boolean(row.is_enabled),
-          createdAt: row.created_at as string,
-        }),
-      );
+      const registryRaw = registryResult.error ? [] : registryResult.data ?? [];
+      const registryOwned = restrictExercisesToOwner
+        ? registryRaw.filter((row) => String(row.owner_admin_id ?? "") === ownerId)
+        : registryRaw;
+      const nextRegistry: PatrolRegistryItem[] = registryOwned.map((row) => ({
+        id: row.id as string,
+        patrolCode: row.patrol_code as string,
+        patrolName: row.patrol_name as string,
+        pinHash: (row.pin_hash as string | null) ?? "",
+        isEnabled: Boolean(row.is_enabled),
+        createdAt: row.created_at as string,
+      }));
 
       const nextAccessEvents: AdminAccessEvent[] = (
         accessResult.error ? [] : accessResult.data ?? []
@@ -1081,13 +1102,23 @@ export function LiveMapPage() {
       return;
     }
 
+    if (
+      normalizeAdminRole(session?.role) === "admin" &&
+      session?.adminId &&
+      !exerciseCatalog.some((e) => e.id === waypoint.exerciseId)
+    ) {
+      setMessage("Waypoint non appartiene alle tue esercitazioni: eliminazione non consentita.");
+      return;
+    }
+
     setWaypointBusy(true);
 
     try {
       const { error } = await supabase
         .from("tactical_map_points")
         .delete()
-        .eq("id", waypoint.id);
+        .eq("id", waypoint.id)
+        .eq("exercise_id", waypoint.exerciseId);
 
       if (error) {
         throw error;
@@ -1118,6 +1149,17 @@ export function LiveMapPage() {
       return;
     }
 
+    if (
+      normalizeAdminRole(session?.role) === "admin" &&
+      session?.adminId &&
+      !exerciseCatalog.some((e) => e.id === patrol.exerciseId)
+    ) {
+      setMessage(
+        "Sessione non appartiene alle tue esercitazioni: force logout non consentito.",
+      );
+      return;
+    }
+
     if (!supabase) {
       setPatrols((current) =>
         current.map((item) =>
@@ -1141,7 +1183,8 @@ export function LiveMapPage() {
           is_online: false,
           logout_at: new Date().toISOString(),
         })
-        .eq("id", patrol.sessionId);
+        .eq("id", patrol.sessionId)
+        .eq("exercise_id", patrol.exerciseId);
 
       if (error) {
         throw error;
@@ -1665,6 +1708,11 @@ export function LiveMapPage() {
     setLoading(true);
 
     try {
+      const patrolOwnerId = session?.adminId?.trim();
+      if (!patrolOwnerId) {
+        throw new Error("Sessione senza adminId: effettua di nuovo il login.");
+      }
+
       if (editingPatrolId) {
         const { data, error } = await supabase
           .from("patrols")
@@ -1675,7 +1723,8 @@ export function LiveMapPage() {
             is_enabled: patrolEnabledInput,
           })
           .select("id, patrol_code")
-          .eq("id", editingPatrolId);
+          .eq("id", editingPatrolId)
+          .eq("owner_admin_id", patrolOwnerId);
 
         if (error) {
           throw error;
@@ -1694,6 +1743,7 @@ export function LiveMapPage() {
             patrol_name: name,
             pin_hash: pin,
             is_enabled: patrolEnabledInput,
+            owner_admin_id: patrolOwnerId,
           })
           .select("id, patrol_code");
 
@@ -1742,10 +1792,16 @@ export function LiveMapPage() {
     setLoading(true);
 
     try {
+      const patrolOwnerId = session?.adminId?.trim();
+      if (!patrolOwnerId) {
+        throw new Error("Sessione senza adminId: effettua di nuovo il login.");
+      }
+
       const { error } = await supabase
         .from("patrols")
         .update({ is_enabled: !item.isEnabled })
-        .eq("id", item.id);
+        .eq("id", item.id)
+        .eq("owner_admin_id", patrolOwnerId);
 
       if (error) {
         throw error;
@@ -1794,7 +1850,16 @@ export function LiveMapPage() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.from("patrols").delete().eq("id", item.id);
+      const patrolOwnerId = session?.adminId?.trim();
+      if (!patrolOwnerId) {
+        throw new Error("Sessione senza adminId: effettua di nuovo il login.");
+      }
+
+      const { error } = await supabase
+        .from("patrols")
+        .delete()
+        .eq("id", item.id)
+        .eq("owner_admin_id", patrolOwnerId);
 
       if (error) {
         throw error;
@@ -1824,7 +1889,8 @@ export function LiveMapPage() {
     }
 
     const confirmed = window.confirm(
-      "Azzerare lo storico in tabella «accessi admin» (login/logout pannello)?\n\n" +
+      "Azzerare lo storico «accessi admin» solo per il tuo login (login/logout pannello)?\n\n" +
+        "Gli accessi degli altri account non vengono toccati. " +
         "Non chiude le sessioni pattuglie in mappa: per quelle apri «Sessioni Live» (CHIUDI / pattuglie online) o conferma anche il passo successivo.",
     );
 
@@ -1841,16 +1907,21 @@ export function LiveMapPage() {
     setLoading(true);
 
     try {
+      const adminCode = session?.code.trim().toLowerCase() ?? "";
+      if (!adminCode) {
+        throw new Error("Sessione non valida.");
+      }
+
       const { error } = await supabase
         .from("admin_access_events")
         .delete()
-        .not("id", "is", null);
+        .eq("admin_code", adminCode);
 
       if (error) {
         throw error;
       }
 
-      setMessage("Storico accessi admin azzerato correttamente.");
+      setMessage("Storico accessi per il tuo login azzerato correttamente.");
 
       const nOnlineMap = patrols.filter((p) => p.isOnline).length;
       const alsoLive = window.confirm(
@@ -1939,13 +2010,25 @@ export function LiveMapPage() {
 
     const sessionIdSet = new Set<string>();
 
-    let summariesQuery = supabase
-      .from("active_patrol_summaries")
-      .select("session_id");
-    if (activeExerciseId) {
-      summariesQuery = summariesQuery.eq("exercise_id", activeExerciseId);
+    const scopeIds =
+      exerciseCatalog.length > 0
+        ? exerciseCatalog.map((e) => e.id)
+        : activeExerciseId
+          ? [activeExerciseId]
+          : [];
+
+    if (scopeIds.length === 0) {
+      setMessage(
+        "CHIUDI / pattuglie online (fallback anon): nessuna esercitazione nel contesto; impossibile limitare le sessioni.",
+      );
+      await loadData();
+      return;
     }
-    const summariesResult = await summariesQuery;
+
+    const summariesResult = await supabase
+      .from("active_patrol_summaries")
+      .select("session_id")
+      .in("exercise_id", scopeIds);
 
     if (summariesResult.error) {
       throw summariesResult.error;
@@ -1959,17 +2042,11 @@ export function LiveMapPage() {
     }
 
     if (sessionIdSet.size === 0) {
-      let sessionsOnlineQuery = supabase
+      const sessionsResult = await supabase
         .from("patrol_sessions")
         .select("id")
-        .eq("is_online", true);
-      if (activeExerciseId) {
-        sessionsOnlineQuery = sessionsOnlineQuery.eq(
-          "exercise_id",
-          activeExerciseId,
-        );
-      }
-      const sessionsResult = await sessionsOnlineQuery;
+        .eq("is_online", true)
+        .in("exercise_id", scopeIds);
 
       if (sessionsResult.error) {
         throw sessionsResult.error;
@@ -1983,8 +2060,13 @@ export function LiveMapPage() {
       }
     }
 
+    const scopeIdSet = new Set(scopeIds);
     for (const patrol of patrols) {
-      if (patrol.isOnline && patrol.sessionId) {
+      if (
+        patrol.isOnline &&
+        patrol.sessionId &&
+        scopeIdSet.has(patrol.exerciseId)
+      ) {
         sessionIdSet.add(patrol.sessionId);
       }
     }
@@ -2008,6 +2090,7 @@ export function LiveMapPage() {
           logout_at: logoutAt,
         })
         .in("id", chunk)
+        .in("exercise_id", scopeIds)
         .select("id");
 
       if (updateError) {
@@ -2062,8 +2145,9 @@ export function LiveMapPage() {
     const nOnlineMap = patrols.filter((p) => p.isOnline).length;
     const resetLiveMsg =
       nOnlineMap > 0
-        ? `Vuoi chiudere le ${nOnlineMap} sessioni pattuglie segnate come online?`
-        : "In mappa nessuna pattuglia risulta online. Vuoi comunque allineare il database (chiude eventuali sessioni ancora «online» lato server e pulisce i ping nel buffer)?";
+        ? `Vuoi chiudere le ${nOnlineMap} sessioni pattuglie online visibili qui? ` +
+            "Vengono chiuse solo le sessioni legate alle tue esercitazioni (non quelle di altri admin)."
+        : "In mappa nessuna pattuglia risulta online. Vuoi comunque allineare il database sulle tue esercitazioni (chiude eventuali sessioni ancora «online» e pulisce i ping nel buffer)?";
 
     const confirmed = window.confirm(resetLiveMsg);
 
@@ -2097,7 +2181,9 @@ export function LiveMapPage() {
     }
 
     const confirmed = window.confirm(
-      "Eliminare DEFINITIVAMENTE dal database tutte le sessioni già CHIUSE (is_online = false)?\n\n" +
+      "Eliminare DEFINITIVAMENTE dal database le sessioni già CHIUSE (is_online = false) " +
+        "solo per le tue esercitazioni?\n\n" +
+        "Non vengono toccate le sessioni di altri comandanti. " +
         "Vengono rimosse anche timeline eventi e ping collegati (cascade). Le sessioni ancora online non sono toccate.",
     );
 
@@ -3887,10 +3973,9 @@ export function LiveMapPage() {
                 <div className={styles.panelHeaderTitle}>
                   <h2>Sessioni Pattuglie</h2>
                   <p>
-                    Elenco sessioni con orari di login/logout, durata e ultimo stato. Il pulsante a
-                    due righe CHIUDI / pattuglie online mette in logout le pattuglie ancora online;
-                    ELIMINA / pattuglie chiuse rimuove dallo storico le sessioni già chiuse (serve
-                    service role sul server).
+                    Elenco sessioni con orari di login/logout, durata e ultimo stato.                     CHIUDI / pattuglie online chiude le sessioni online solo per le tue esercitazioni
+                    (service role). ELIMINA / pattuglie chiuse rimuove solo le sessioni chiuse sulle
+                    tue esercitazioni.
                   </p>
                 </div>
                 <div

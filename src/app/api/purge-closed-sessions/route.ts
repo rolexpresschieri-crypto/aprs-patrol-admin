@@ -2,8 +2,31 @@ import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 import { normalizeAdminRole, type AdminSessionData } from "@/lib/admin-auth";
+import { resolveOwnerAdminId } from "@/lib/resolve-owner-admin";
 
 const CHUNK = 80;
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function requireAdminSession(session: unknown): AdminSessionData | null {
+  if (!session || typeof session !== "object") {
+    return null;
+  }
+  const s = session as Record<string, unknown>;
+  const code = typeof s.code === "string" ? s.code.trim() : "";
+  if (!code) {
+    return null;
+  }
+  const adminIdRaw = typeof s.adminId === "string" ? s.adminId.trim() : "";
+  const adminId = adminIdRaw && UUID_RE.test(adminIdRaw) ? adminIdRaw : undefined;
+  return {
+    code,
+    name: typeof s.name === "string" ? s.name : code,
+    role: normalizeAdminRole(s.role as string | null),
+    ...(adminId ? { adminId } : {}),
+  };
+}
 
 export async function POST(request: Request) {
   const url =
@@ -29,7 +52,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Body JSON non valido" }, { status: 400 });
   }
 
-  const session = (body as { session?: AdminSessionData | null }).session;
+  const session = requireAdminSession((body as { session?: AdminSessionData | null }).session);
   if (!session?.code) {
     return NextResponse.json({ error: "Sessione admin assente" }, { status: 401 });
   }
@@ -45,6 +68,34 @@ export async function POST(request: Request) {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  const ownerRes = await resolveOwnerAdminId(admin, session);
+  if ("error" in ownerRes) {
+    return ownerRes.error;
+  }
+  const ownerId = ownerRes.id;
+
+  const { data: myExercises, error: exErr } = await admin
+    .from("exercises")
+    .select("id")
+    .eq("owner_admin_id", ownerId);
+
+  if (exErr) {
+    return NextResponse.json({ error: exErr.message }, { status: 500 });
+  }
+
+  const exerciseIds = (myExercises ?? [])
+    .map((r) => r.id as string | undefined)
+    .filter((id): id is string => Boolean(id));
+
+  if (exerciseIds.length === 0) {
+    return NextResponse.json({
+      ok: true,
+      deletedSessions: 0,
+      message:
+        "Nessuna esercitazione associata a questo account: nulla da eliminare tra le sessioni chiuse.",
+    });
+  }
+
   let deleted = 0;
   const maxRounds = 500;
 
@@ -53,6 +104,7 @@ export async function POST(request: Request) {
       .from("patrol_sessions")
       .select("id")
       .eq("is_online", false)
+      .in("exercise_id", exerciseIds)
       .limit(CHUNK);
 
     if (selError) {
@@ -81,7 +133,7 @@ export async function POST(request: Request) {
     deletedSessions: deleted,
     message:
       deleted === 0
-        ? "Nessuna sessione CHIUSA da rimuovere (is_online = false)."
-        : `Rimosse ${deleted} sessioni CHIUSE dal database (eventi/ping collegati eliminati in cascade).`,
+        ? "Nessuna sessione CHIUSA da rimuovere tra le tue esercitazioni (is_online = false)."
+        : `Rimosse ${deleted} sessioni CHIUSE solo per le tue esercitazioni (eventi/ping collegati in cascade).`,
   });
 }
