@@ -116,7 +116,7 @@ export async function POST(request: Request) {
   const { data: rows, error: qErr } = await admin
     .from("patrol_status_events")
     .select(
-      "id, changed_at, status, note, patrols(patrol_code, patrol_name), missions(mission_name), patrol_sessions(login_at, logout_at)",
+      "id, changed_at, status, note, patrols(patrol_code, patrol_name), missions(mission_name), patrol_sessions(is_online, login_at, logout_at)",
     )
     .eq("exercise_id", exerciseId)
     .order("changed_at", { ascending: true })
@@ -127,7 +127,7 @@ export async function POST(request: Request) {
   }
 
   const headers = [
-    "ID evento",
+    "ONLINE",
     "Pattuglia",
     "Missione",
     "Stato",
@@ -149,8 +149,8 @@ export async function POST(request: Request) {
       | null;
     const mission = Array.isArray(missionRaw) ? missionRaw[0] : missionRaw;
     const psRaw = row.patrol_sessions as
-      | { login_at?: string; logout_at?: string | null }
-      | Array<{ login_at?: string; logout_at?: string | null }>
+      | { is_online?: boolean; login_at?: string; logout_at?: string | null }
+      | Array<{ is_online?: boolean; login_at?: string; logout_at?: string | null }>
       | null;
     const ps = Array.isArray(psRaw) ? psRaw[0] : psRaw;
 
@@ -160,7 +160,7 @@ export async function POST(request: Request) {
       code && name ? `${code} - ${name}` : code || name || "n/d";
 
     return [
-      String(row.id ?? ""),
+      ps?.is_online ? "online" : "chiusa",
       patrolLabel,
       String(mission?.mission_name ?? ""),
       getStatusLabel(String(row.status ?? "")),
