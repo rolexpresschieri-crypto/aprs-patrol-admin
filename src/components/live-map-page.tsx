@@ -237,9 +237,24 @@ export function LiveMapPage() {
   const [exerciseFormActive, setExerciseFormActive] = useState(false);
   const [exerciseBusy, setExerciseBusy] = useState(false);
 
+  const [exportSessionsExerciseId, setExportSessionsExerciseId] = useState("");
+  const [exportSessionsBusy, setExportSessionsBusy] = useState(false);
+
   useEffect(() => {
     setPushPortalReady(true);
   }, []);
+
+  useEffect(() => {
+    if (exerciseCatalog.length === 0) {
+      setExportSessionsExerciseId("");
+      return;
+    }
+    setExportSessionsExerciseId((prev) =>
+      prev && exerciseCatalog.some((e) => e.id === prev)
+        ? prev
+        : exerciseCatalog[0]!.id,
+    );
+  }, [exerciseCatalog]);
 
   useEffect(() => {
     if (!pushSuccessBanner) {
@@ -2237,6 +2252,150 @@ export function LiveMapPage() {
     }
   }
 
+  function canExportSessionsForExercise(exerciseId: string): boolean {
+    return Boolean(exerciseId.trim()) && exerciseCatalog.some((e) => e.id === exerciseId);
+  }
+
+  async function fetchSessionExportMatrix(exerciseId: string): Promise<{
+    headers: string[];
+    rows: string[][];
+    exerciseTitle: string;
+  }> {
+    const ex = exerciseCatalog.find((e) => e.id === exerciseId);
+    const exerciseTitle = ex?.title ?? "Esercitazione";
+
+    if (!supabase) {
+      throw new Error("Supabase non configurato.");
+    }
+
+    const { data, error } = await supabase
+      .from("patrol_sessions")
+      .select(
+        "id, login_at, logout_at, is_online, current_status, last_status_at, patrols!inner(patrol_code, patrol_name), missions(mission_name)",
+      )
+      .eq("exercise_id", exerciseId)
+      .order("login_at", { ascending: false })
+      .limit(5000);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const headers = [
+      "ID sessione",
+      "Codice pattuglia",
+      "Nome pattuglia",
+      "Missione",
+      "Login",
+      "Logout",
+      "Online",
+      "Stato corrente",
+      "Ultimo aggiornamento stato",
+    ];
+
+    const rows = (data ?? []).map((row) => {
+      const patrolRaw = row.patrols as
+        | { patrol_code?: string; patrol_name?: string }
+        | Array<{ patrol_code?: string; patrol_name?: string }>
+        | null;
+      const patrolData = Array.isArray(patrolRaw) ? patrolRaw[0] : patrolRaw;
+      const missionRaw = row.missions as
+        | { mission_name?: string }
+        | Array<{ mission_name?: string }>
+        | null;
+      const missionData = Array.isArray(missionRaw) ? missionRaw[0] : missionRaw;
+
+      return [
+        String(row.id ?? ""),
+        String(patrolData?.patrol_code ?? ""),
+        String(patrolData?.patrol_name ?? ""),
+        String(missionData?.mission_name ?? ""),
+        formatFixTimestamp(String(row.login_at ?? "")),
+        row.logout_at ? formatFixTimestamp(String(row.logout_at)) : "",
+        row.is_online ? "Sì" : "No",
+        getStatusLabel(String(row.current_status ?? "")),
+        formatFixTimestamp(String(row.last_status_at ?? "")),
+      ];
+    });
+
+    return { headers, rows, exerciseTitle };
+  }
+
+  async function exportSessionsToPdf() {
+    if (!canExportSessionsForExercise(exportSessionsExerciseId)) {
+      setMessage("Seleziona un’esercitazione nel catalogo (dopo login).");
+      return;
+    }
+    setExportSessionsBusy(true);
+    try {
+      const { headers, rows, exerciseTitle } = await fetchSessionExportMatrix(
+        exportSessionsExerciseId,
+      );
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "a4",
+      });
+      doc.setFontSize(16);
+      doc.text("Sessioni pattuglia", 14, 14);
+      doc.setFontSize(10);
+      doc.text(`Esercitazione: ${exerciseTitle}`, 14, 20);
+      doc.text(
+        `Account: ${session?.code ?? "n/d"} · ${formatFixTimestamp(new Date().toISOString())}`,
+        14,
+        26,
+      );
+      autoTable(doc, {
+        startY: 32,
+        head: [headers],
+        body: rows,
+        styles: { fontSize: 7 },
+        headStyles: { fillColor: [17, 113, 183] },
+      });
+      const safeTitle = exerciseTitle.replace(/[^\w\d]+/g, "_").slice(0, 40);
+      doc.save(`sessioni_${safeTitle}_${new Date().toISOString().slice(0, 10)}.pdf`);
+      setMessage(`Export PDF sessioni: ${rows.length} righe.`);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Export PDF non riuscito.");
+    } finally {
+      setExportSessionsBusy(false);
+    }
+  }
+
+  async function exportSessionsToXlsx() {
+    if (!canExportSessionsForExercise(exportSessionsExerciseId)) {
+      setMessage("Seleziona un’esercitazione nel catalogo (dopo login).");
+      return;
+    }
+    setExportSessionsBusy(true);
+    try {
+      const XLSX = await import("xlsx");
+      const { headers, rows, exerciseTitle } = await fetchSessionExportMatrix(
+        exportSessionsExerciseId,
+      );
+      const meta = [
+        ["Esercitazione", exerciseTitle],
+        ["Account export", session?.code ?? ""],
+        ["Generato il", formatFixTimestamp(new Date().toISOString())],
+        [],
+      ];
+      const aoa = [...meta, headers, ...rows];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Sessioni");
+      const safeTitle = exerciseTitle.replace(/[^\w\d]+/g, "_").slice(0, 40);
+      XLSX.writeFile(
+        wb,
+        `sessioni_${safeTitle}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      );
+      setMessage(`Export XLSX sessioni: ${rows.length} righe.`);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Export XLSX non riuscito.");
+    } finally {
+      setExportSessionsBusy(false);
+    }
+  }
+
   function buildPatrolExportRows() {
     return registryItems.map((item) => {
       const baseRow = [
@@ -2661,7 +2820,7 @@ export function LiveMapPage() {
                 ? "Accessi Admin"
                 : adminView === "admin-accounts"
                   ? "Gestione account backend"
-                  : "Export Pattuglie";
+                  : "Export pattuglie e sessioni";
 
   const pageEyebrow =
     adminView === "live-map"
@@ -2695,7 +2854,7 @@ export function LiveMapPage() {
                 ? "Storico accessi backend con login e logout di admin e viewer."
                 : adminView === "admin-accounts"
                   ? "Crea o modifica account admin e viewer (tabella Supabase admins). Disponibile solo in modalità Live con ruolo amministratore."
-                  : "Esporta l'elenco pattuglie in formato CSV o PDF per invio rapido agli operatori.";
+                  : "Esporta anagrafica pattuglie (CSV/PDF) e storico sessioni per esercitazione (PDF/XLSX), in base al catalogo del tuo login.";
 
   if (!authChecked) {
     return null;
@@ -4546,6 +4705,75 @@ export function LiveMapPage() {
                       Export PDF
                     </button>
                   </div>
+                </div>
+              </div>
+            </section>
+
+            <section className={styles.panelCard}>
+              <div className={styles.panelHeader}>
+                <div className={styles.panelHeaderTitle}>
+                  <h2>Export sessioni pattuglia</h2>
+                  <p>
+                    Storico <code>patrol_sessions</code> per l&apos;esercitazione scelta: solo
+                    esercitazioni presenti nel catalogo del tuo login (admin = tue; viewer = tutte
+                    quelle visibili). Massimo 5000 righe per file.
+                  </p>
+                </div>
+              </div>
+
+              <div className={styles.registryForm}>
+                <div className={styles.fieldGroup}>
+                  <label htmlFor="export-sessions-exercise">Esercitazione</label>
+                  <select
+                    disabled={exerciseCatalog.length === 0 || exportSessionsBusy}
+                    id="export-sessions-exercise"
+                    onChange={(event) =>
+                      setExportSessionsExerciseId(event.target.value)
+                    }
+                    value={exportSessionsExerciseId}
+                  >
+                    {exerciseCatalog.length === 0 ? (
+                      <option value="">— Nessuna esercitazione —</option>
+                    ) : (
+                      exerciseCatalog.map((row) => (
+                        <option key={row.id} value={row.id}>
+                          {row.title}
+                          {row.isActive ? " (attiva)" : ""}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                <div className={styles.exportButtonRow}>
+                  <button
+                    className={styles.mapAction}
+                    disabled={
+                      exportSessionsBusy ||
+                      !exportSessionsExerciseId ||
+                      exerciseCatalog.length === 0
+                    }
+                    onClick={() => {
+                      void exportSessionsToPdf();
+                    }}
+                    type="button"
+                  >
+                    {exportSessionsBusy ? "Export…" : "Sessioni PDF"}
+                  </button>
+                  <button
+                    className={styles.ghostButton}
+                    disabled={
+                      exportSessionsBusy ||
+                      !exportSessionsExerciseId ||
+                      exerciseCatalog.length === 0
+                    }
+                    onClick={() => {
+                      void exportSessionsToXlsx();
+                    }}
+                    type="button"
+                  >
+                    {exportSessionsBusy ? "Export…" : "Sessioni XLSX"}
+                  </button>
                 </div>
               </div>
             </section>
