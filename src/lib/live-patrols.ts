@@ -157,6 +157,29 @@ export function pickDefaultPatrolMapColor(items: PatrolRegistryItem[]): string {
   return PATROL_MAP_COLOR_PALETTE[idx]!;
 }
 
+/** Finestra lettura traccia (pings): ~30 min app + margine orologio. */
+export const PATROL_TRACK_HISTORY_MINUTES = 31;
+
+/** Righe `patrol_position_pings` → coordinate per `session_id` (ordine righe = ordine tempo se la query è ordinata). */
+export function groupPatrolTrackPointsBySession(
+  rows: Record<string, unknown>[],
+): Record<string, [number, number][]> {
+  const map: Record<string, [number, number][]> = {};
+  for (const row of rows) {
+    const sid = String(row.session_id ?? "");
+    const lat = Number(row.latitude);
+    const lon = Number(row.longitude);
+    if (!sid || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+      continue;
+    }
+    if (!map[sid]) {
+      map[sid] = [];
+    }
+    map[sid].push([lat, lon]);
+  }
+  return map;
+}
+
 export function formatFixTimestamp(timestamp: string | null) {
   if (!timestamp) {
     return "GPS in acquisizione";

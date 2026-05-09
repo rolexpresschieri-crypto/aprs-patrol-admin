@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef } from "react";
 import {
   MapContainer,
   Marker,
+  Polyline,
   Popup,
   ScaleControl,
   TileLayer,
@@ -66,6 +67,8 @@ function patrolMobileDivIcon(patrol: LivePatrol, selected: boolean): L.DivIcon {
 type PatrolLiveMapProps = {
   layerMode: LayerMode;
   patrols: LivePatrol[];
+  /** Traccia per sessione: lista [lat, lng] in ordine cronologico (da `patrol_position_pings`). */
+  patrolTracks: Record<string, [number, number][]>;
   waypoints: TacticalWaypoint[];
   focusedPatrol: LivePatrol | null;
   selectedSessionId: string | null;
@@ -399,6 +402,7 @@ function TacticalWpMarker({
 export default function PatrolLiveMap({
   layerMode,
   patrols,
+  patrolTracks,
   waypoints,
   focusedPatrol,
   selectedSessionId,
@@ -436,6 +440,25 @@ export default function PatrolLiveMap({
         onFocusHandled={onFocusHandled}
       />
       <LeafletInvalidateOnLayout />
+
+      {patrols.map((patrol) => {
+        const pts = patrolTracks[patrol.sessionId];
+        if (!pts || pts.length < 2) {
+          return null;
+        }
+        return (
+          <Polyline
+            key={`track-${patrol.sessionId}`}
+            pathOptions={{
+              color: getPatrolMarkerFillColor(patrol),
+              weight: 4,
+              opacity: 0.82,
+              lineJoin: "round",
+            }}
+            positions={pts}
+          />
+        );
+      })}
 
       {patrols.filter(hasCoordinates).map((patrol) => (
         <PatrolMarker

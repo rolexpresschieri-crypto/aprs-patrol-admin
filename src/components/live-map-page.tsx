@@ -36,7 +36,9 @@ import {
   mockPatrolRegistry,
   mockWaypoints,
   normalizePatrolMapColor,
+  PATROL_TRACK_HISTORY_MINUTES,
   pickDefaultPatrolMapColor,
+  groupPatrolTrackPointsBySession,
   statusOptions,
   tacticalWaypointsFromRows,
   type LayerMode,
@@ -213,6 +215,9 @@ export function LiveMapPage() {
   const [adminsFormEnabled, setAdminsFormEnabled] = useState(true);
 
   const [waypoints, setWaypoints] = useState<TacticalWaypoint[]>([]);
+  const [patrolTracksBySessionId, setPatrolTracksBySessionId] = useState<
+    Record<string, [number, number][]>
+  >({});
   const [waypointBusy, setWaypointBusy] = useState(false);
   const [waypointFeedError, setWaypointFeedError] = useState<string | null>(null);
   const [pushModalOpen, setPushModalOpen] = useState(false);
@@ -875,6 +880,30 @@ export function LiveMapPage() {
         }
       }
 
+      let patrolTracksPayload: Record<string, [number, number][]> = {};
+      if (supabase && missionContextExerciseId) {
+        try {
+          const cutoffIso = new Date(
+            Date.now() - PATROL_TRACK_HISTORY_MINUTES * 60 * 1000,
+          ).toISOString();
+          const { data: pingRows, error: pingTrackError } = await supabase
+            .from("patrol_position_pings")
+            .select("session_id, latitude, longitude")
+            .eq("exercise_id", missionContextExerciseId)
+            .gte("fixed_at", cutoffIso)
+            .order("fixed_at", { ascending: true })
+            .limit(8000);
+          if (!pingTrackError && pingRows) {
+            patrolTracksPayload = groupPatrolTrackPointsBySession(
+              pingRows as Record<string, unknown>[],
+            );
+          }
+        } catch {
+          patrolTracksPayload = {};
+        }
+      }
+      setPatrolTracksBySessionId(patrolTracksPayload);
+
       setPatrols(patrolsForState);
       setMissions(nextMissions);
       setRegistryItems(nextRegistry);
@@ -899,6 +928,7 @@ export function LiveMapPage() {
       const errorText =
         error instanceof Error ? error.message : "Errore sconosciuto.";
       setBackendMode("mock");
+      setPatrolTracksBySessionId({});
       setPatrols(mockPatrols);
       setMissions(["MISSIONE ALFA", "MISSIONE BRAVO", "MISSIONE CHARLIE"]);
       setWaypoints(mockWaypoints);
@@ -3195,7 +3225,8 @@ export function LiveMapPage() {
               <div className={styles.mapHeaderTitle}>
                 <h2>Operational Map</h2>
                 <p>
-                  Marker live e waypoint (▲ giallo); scala in basso a sinistra; filtro stato
+                  Marker live, traccia percorso (~30 min) e waypoint (▲ giallo); scala in basso a
+                  sinistra; filtro stato
                   e layer Standard / Ortofoto.
                 </p>
               </div>
@@ -3230,6 +3261,7 @@ export function LiveMapPage() {
                 canManageWaypoints={canEdit}
                 focusedPatrol={focusedPatrol}
                 layerMode={layerMode}
+                patrolTracks={patrolTracksBySessionId}
                 onDeleteWaypoint={handleDeleteWaypointFromMap}
                 onEditWaypoint={(waypoint) => {
                   router.push(

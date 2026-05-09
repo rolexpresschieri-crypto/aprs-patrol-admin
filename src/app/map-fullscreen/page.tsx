@@ -17,8 +17,10 @@ import {
   getStatusLabel,
   mockPatrols,
   mockWaypoints,
+  PATROL_TRACK_HISTORY_MINUTES,
   statusOptions,
   normalizePatrolMapColor,
+  groupPatrolTrackPointsBySession,
   tacticalWaypointsFromRows,
   type LayerMode,
   type LivePatrol,
@@ -39,6 +41,9 @@ export default function FullscreenMapPage() {
   }, []);
 
   const [patrols, setPatrols] = useState<LivePatrol[]>(mockPatrols);
+  const [patrolTracksBySessionId, setPatrolTracksBySessionId] = useState<
+    Record<string, [number, number][]>
+  >({});
   const [waypoints, setWaypoints] = useState<TacticalWaypoint[]>(mockWaypoints);
   const [layerMode, setLayerMode] = useState<LayerMode>("standard");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -115,6 +120,7 @@ export default function FullscreenMapPage() {
 
   const loadData = useCallback(async () => {
     if (!supabase) {
+      setPatrolTracksBySessionId({});
       setPatrols(mockPatrols);
       setWaypoints(mockWaypoints);
       setTacticalPointsExerciseId(null);
@@ -134,6 +140,7 @@ export default function FullscreenMapPage() {
     const ownerId = session?.adminId ?? null;
     if (!ownerId) {
       setTacticalPointsExerciseId(null);
+      setPatrolTracksBySessionId({});
       setPatrols([]);
       setWaypoints([]);
       setMessage(
@@ -223,6 +230,30 @@ export default function FullscreenMapPage() {
         mapColor: normalizePatrolMapColor((row.map_color as string | null) ?? null),
       }));
 
+      let tracksPayload: Record<string, [number, number][]> = {};
+      if (activeWpId) {
+        try {
+          const cutoffIso = new Date(
+            Date.now() - PATROL_TRACK_HISTORY_MINUTES * 60 * 1000,
+          ).toISOString();
+          const { data: pingRows, error: pingErr } = await supabase
+            .from("patrol_position_pings")
+            .select("session_id, latitude, longitude")
+            .eq("exercise_id", activeWpId)
+            .gte("fixed_at", cutoffIso)
+            .order("fixed_at", { ascending: true })
+            .limit(8000);
+          if (!pingErr && pingRows) {
+            tracksPayload = groupPatrolTrackPointsBySession(
+              pingRows as Record<string, unknown>[],
+            );
+          }
+        } catch {
+          tracksPayload = {};
+        }
+      }
+      setPatrolTracksBySessionId(tracksPayload);
+
       setPatrols(nextPatrols);
       setMessage(
         nextPatrols.length > 0
@@ -233,6 +264,7 @@ export default function FullscreenMapPage() {
     } catch (error) {
       const errorText =
         error instanceof Error ? error.message : "Errore sconosciuto.";
+      setPatrolTracksBySessionId({});
       setPatrols(mockPatrols);
       setWaypoints(mockWaypoints);
       setMessage(`Errore feed live: ${errorText}. Rimango in mock.`);
@@ -371,6 +403,7 @@ export default function FullscreenMapPage() {
           <PatrolLiveMap
             focusedPatrol={focusedPatrol}
             layerMode={layerMode}
+            patrolTracks={patrolTracksBySessionId}
             onFocusHandled={() => setFocusedPatrol(null)}
             onForceLogout={() => {}}
             onSelectPatrol={(patrol) => {
