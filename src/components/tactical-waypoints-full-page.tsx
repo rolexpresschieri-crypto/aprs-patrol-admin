@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -22,6 +23,7 @@ import pageStyles from "./tactical-waypoints-full-page.module.css";
 import {
   formatWaypointTimestamp,
   mockWaypoints,
+  sortTacticalWaypointsAlphabetically,
   tacticalWaypointSourceLabel,
   tacticalWaypointsFromRows,
   type ExerciseOption,
@@ -109,9 +111,14 @@ export function TacticalWaypointsFullPage() {
   const isViewer = session?.role === "viewer";
   const canEdit = session?.role === "admin";
 
+  const waypointsOrdered = useMemo(
+    () => sortTacticalWaypointsAlphabetically(waypoints),
+    [waypoints],
+  );
+
   const refreshWaypointsOnly = useCallback(async () => {
     if (!supabase) {
-      setWaypoints(mockWaypoints);
+      setWaypoints(sortTacticalWaypointsAlphabetically(mockWaypoints));
       return;
     }
 
@@ -124,7 +131,6 @@ export function TacticalWaypointsFullPage() {
       .from("tactical_map_points")
       .select("*")
       .eq("exercise_id", waypointExerciseId)
-      .order("created_at", { ascending: false })
       .limit(400);
 
     if (!error && data) {
@@ -137,7 +143,7 @@ export function TacticalWaypointsFullPage() {
 
   const loadWaypointPageData = useCallback(async () => {
     if (!supabase) {
-      setWaypoints(mockWaypoints);
+      setWaypoints(sortTacticalWaypointsAlphabetically(mockWaypoints));
       setExerciseOptions([]);
       setWaypointFeedError(null);
       setLoading(false);
@@ -256,7 +262,6 @@ export function TacticalWaypointsFullPage() {
                 .from("tactical_map_points")
                 .select("*")
                 .eq("exercise_id", wpFilterId)
-                .order("created_at", { ascending: false })
                 .limit(400))(),
             "Lettura waypoint",
           );
@@ -593,8 +598,8 @@ export function TacticalWaypointsFullPage() {
               <div className={mapStyles.waypointPanelBody}>
                 <div className={mapStyles.registryForm}>
                   <div className={mapStyles.messageBox}>
-                    {waypoints.length} waypoint in elenco · Ultima fonte: sincronizzazione
-                    Supabase e canale Realtime.
+                    {waypoints.length} waypoint in elenco · Ordine A–Z per etichetta (senza nome
+                    in fondo) · Ultima fonte: sincronizzazione Supabase e canale Realtime.
                   </div>
 
                   {waypointFeedError ? (
@@ -709,10 +714,10 @@ export function TacticalWaypointsFullPage() {
                   ) : null}
 
                   <div className={mapStyles.listBody} style={{ marginTop: 12 }}>
-                    {waypoints.length === 0 ? (
+                    {waypointsOrdered.length === 0 ? (
                       <div className={mapStyles.emptyState}>Nessun waypoint registrato.</div>
                     ) : (
-                      waypoints.map((waypoint) => (
+                      waypointsOrdered.map((waypoint) => (
                         <article className={mapStyles.listItem} key={waypoint.id}>
                           <div className={mapStyles.listRow}>
                             <div className={mapStyles.listIdentity}>

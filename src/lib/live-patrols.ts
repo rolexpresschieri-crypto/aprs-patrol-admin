@@ -161,11 +161,31 @@ export function formatWaypointTimestamp(iso: string | null) {
   }).format(new Date(iso));
 }
 
+function compareTacticalWaypointsAlphabetically(
+  a: TacticalWaypoint,
+  b: TacticalWaypoint,
+): number {
+  const labelA = (a.label ?? "").trim();
+  const labelB = (b.label ?? "").trim();
+  if (!labelA && !labelB) return a.id.localeCompare(b.id);
+  if (!labelA) return 1;
+  if (!labelB) return -1;
+  const cmp = labelA.localeCompare(labelB, "it", { sensitivity: "base" });
+  return cmp !== 0 ? cmp : a.id.localeCompare(b.id);
+}
+
+/** Ordine A–Z sull’etichetta (locale it), senza nome in fondo. */
+export function sortTacticalWaypointsAlphabetically(
+  waypoints: TacticalWaypoint[],
+): TacticalWaypoint[] {
+  return [...waypoints].sort(compareTacticalWaypointsAlphabetically);
+}
+
 /** Righe Supabase → modello UI condiviso (live map + fullscreen). */
 export function tacticalWaypointsFromRows(
   rows: Record<string, unknown>[],
 ): TacticalWaypoint[] {
-  return rows
+  const parsed = rows
     .map((row) => {
       const lat = Number(row.latitude);
       const lon = Number(row.longitude);
@@ -184,6 +204,8 @@ export function tacticalWaypointsFromRows(
     .filter(
       (w) => w.id.length > 0 && Number.isFinite(w.latitude) && Number.isFinite(w.longitude),
     );
+
+  return sortTacticalWaypointsAlphabetically(parsed);
 }
 
 export function formatSessionDuration(loginAt: string, logoutAt: string | null) {
