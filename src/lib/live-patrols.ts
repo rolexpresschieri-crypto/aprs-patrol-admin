@@ -15,6 +15,8 @@ export type LivePatrol = {
   lastAccuracy: number | null;
   lastFixAt: string | null;
   lastStatusAt: string;
+  /** `#RRGGBB` sulla tabella `patrols`; mappa / marker identificativo pattuglia. */
+  mapColor: string | null;
 };
 
 /** `tactical_map_points` — stessi campi usati da app mobile + inserimenti backoffice. */
@@ -43,6 +45,8 @@ export type PatrolRegistryItem = {
   pinHash: string;
   isEnabled: boolean;
   createdAt: string;
+  /** `#RRGGBB` quando impostato in backoffice. */
+  mapColor: string | null;
 };
 
 export type PatrolSessionRecord = {
@@ -105,6 +109,52 @@ export function getStatusLabel(status: string) {
 
 export function getStatusColor(status: string) {
   return statusMap[status]?.color ?? "#9ca3af";
+}
+
+const HEX_MAP_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
+
+export function normalizePatrolMapColor(input: string | null | undefined): string | null {
+  const trimmed = input?.trim() ?? "";
+  if (!trimmed || !HEX_MAP_COLOR_RE.test(trimmed)) {
+    return null;
+  }
+  return trimmed.toUpperCase();
+}
+
+/** Colore marker mappa: `map_color` pattuglia, altrimenti colore stato. */
+export function getPatrolMarkerFillColor(patrol: {
+  status: string;
+  mapColor: string | null;
+}) {
+  const hex = normalizePatrolMapColor(patrol.mapColor);
+  return hex ?? getStatusColor(patrol.status);
+}
+
+export const PATROL_MAP_COLOR_PALETTE = [
+  "#1171B7",
+  "#34D12C",
+  "#FFB300",
+  "#D91F2A",
+  "#7E57C2",
+  "#0097A7",
+  "#C2185B",
+  "#5D4037",
+] as const;
+
+export function pickDefaultPatrolMapColor(items: PatrolRegistryItem[]): string {
+  const used = new Set(
+    items
+      .map((r) => normalizePatrolMapColor(r.mapColor)?.toLowerCase())
+      .filter((v): v is string => Boolean(v)),
+  );
+  for (const c of PATROL_MAP_COLOR_PALETTE) {
+    if (!used.has(c.toLowerCase())) {
+      return c;
+    }
+  }
+  const idx =
+    PATROL_MAP_COLOR_PALETTE.length > 0 ? items.length % PATROL_MAP_COLOR_PALETTE.length : 0;
+  return PATROL_MAP_COLOR_PALETTE[idx]!;
 }
 
 export function formatFixTimestamp(timestamp: string | null) {
@@ -276,6 +326,7 @@ export const mockPatrols: LivePatrol[] = [
     lastAccuracy: 8,
     lastFixAt: "2026-04-07T18:32:10+02:00",
     lastStatusAt: "2026-04-07T18:32:10+02:00",
+    mapColor: "#1171B7",
   },
   {
     sessionId: "demo-session-002",
@@ -292,6 +343,7 @@ export const mockPatrols: LivePatrol[] = [
     lastAccuracy: 11,
     lastFixAt: "2026-04-07T18:32:00+02:00",
     lastStatusAt: "2026-04-07T18:32:00+02:00",
+    mapColor: "#34D12C",
   },
   {
     sessionId: "demo-session-004",
@@ -308,6 +360,7 @@ export const mockPatrols: LivePatrol[] = [
     lastAccuracy: 5,
     lastFixAt: "2026-04-07T18:31:00+02:00",
     lastStatusAt: "2026-04-07T18:31:00+02:00",
+    mapColor: "#7E57C2",
   },
   {
     sessionId: "demo-session-005",
@@ -324,6 +377,7 @@ export const mockPatrols: LivePatrol[] = [
     lastAccuracy: null,
     lastFixAt: null,
     lastStatusAt: "2026-04-07T18:30:00+02:00",
+    mapColor: "#FFB300",
   },
 ];
 
@@ -349,6 +403,7 @@ export const mockPatrolRegistry: PatrolRegistryItem[] = [
     pinHash: "1234",
     isEnabled: true,
     createdAt: "2026-04-01T10:00:00+02:00",
+    mapColor: "#1171B7",
   },
   {
     id: "ptg002",
@@ -357,6 +412,7 @@ export const mockPatrolRegistry: PatrolRegistryItem[] = [
     pinHash: "1234",
     isEnabled: true,
     createdAt: "2026-04-01T10:00:00+02:00",
+    mapColor: "#34D12C",
   },
   {
     id: "ptg003",
@@ -365,6 +421,7 @@ export const mockPatrolRegistry: PatrolRegistryItem[] = [
     pinHash: "1234",
     isEnabled: true,
     createdAt: "2026-04-01T10:00:00+02:00",
+    mapColor: "#FFB300",
   },
   {
     id: "ptg004",
@@ -373,6 +430,7 @@ export const mockPatrolRegistry: PatrolRegistryItem[] = [
     pinHash: "1234",
     isEnabled: true,
     createdAt: "2026-04-08T18:00:00+02:00",
+    mapColor: "#7E57C2",
   },
   {
     id: "ptg005",
@@ -381,5 +439,6 @@ export const mockPatrolRegistry: PatrolRegistryItem[] = [
     pinHash: "1234",
     isEnabled: true,
     createdAt: "2026-04-08T18:05:00+02:00",
+    mapColor: "#D91F2A",
   },
 ];

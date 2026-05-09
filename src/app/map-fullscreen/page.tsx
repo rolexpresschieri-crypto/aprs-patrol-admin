@@ -12,11 +12,13 @@ import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 import styles from "./page.module.css";
 import {
   formatFixTimestamp,
+  getPatrolMarkerFillColor,
   getStatusColor,
   getStatusLabel,
   mockPatrols,
   mockWaypoints,
   statusOptions,
+  normalizePatrolMapColor,
   tacticalWaypointsFromRows,
   type LayerMode,
   type LivePatrol,
@@ -170,7 +172,7 @@ export default function FullscreenMapPage() {
         return supabase
           .from("active_patrol_summaries")
           .select(
-            "session_id, exercise_id, patrol_id, patrol_code, patrol_name, mission_id, mission_name, current_status, last_status_at, is_online, last_latitude, last_longitude, last_accuracy, last_fix_at",
+            "session_id, exercise_id, patrol_id, patrol_code, patrol_name, mission_id, mission_name, current_status, last_status_at, is_online, last_latitude, last_longitude, last_accuracy, last_fix_at, map_color",
           )
           .eq("exercise_id", activeWpId)
           .order("patrol_code", { ascending: true });
@@ -218,6 +220,7 @@ export default function FullscreenMapPage() {
         lastAccuracy: (row.last_accuracy as number | null) ?? null,
         lastFixAt: (row.last_fix_at as string | null) ?? null,
         lastStatusAt: row.last_status_at as string,
+        mapColor: normalizePatrolMapColor((row.map_color as string | null) ?? null),
       }));
 
       setPatrols(nextPatrols);
@@ -394,7 +397,7 @@ export default function FullscreenMapPage() {
           >
             <span
               className={styles.patrolChipDot}
-              style={{ backgroundColor: getStatusColor(patrol.status) }}
+              style={{ backgroundColor: getPatrolMarkerFillColor(patrol) }}
             />
             {patrol.patrolCode} - {patrol.patrolName} | {getStatusLabel(patrol.status)}
           </button>

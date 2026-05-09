@@ -35,6 +35,8 @@ import {
   mockPatrols,
   mockPatrolRegistry,
   mockWaypoints,
+  normalizePatrolMapColor,
+  pickDefaultPatrolMapColor,
   statusOptions,
   tacticalWaypointsFromRows,
   type LayerMode,
@@ -183,6 +185,7 @@ export function LiveMapPage() {
   const [patrolCodeInput, setPatrolCodeInput] = useState("");
   const [patrolNameInput, setPatrolNameInput] = useState("");
   const [patrolPinInput, setPatrolPinInput] = useState("1234");
+  const [patrolMapColorInput, setPatrolMapColorInput] = useState("#1171B7");
   const [patrolEnabledInput, setPatrolEnabledInput] = useState(true);
   const [exportPatrolsSelected, setExportPatrolsSelected] = useState(true);
   const [includePinInExport, setIncludePinInExport] = useState(false);
@@ -459,7 +462,7 @@ export function LiveMapPage() {
       const patrolSummarySelect = supabase
         .from("active_patrol_summaries")
         .select(
-          "session_id, exercise_id, patrol_id, patrol_code, patrol_name, mission_id, mission_name, current_status, last_status_at, is_online, last_latitude, last_longitude, last_accuracy, last_fix_at",
+          "session_id, exercise_id, patrol_id, patrol_code, patrol_name, mission_id, mission_name, current_status, last_status_at, is_online, last_latitude, last_longitude, last_accuracy, last_fix_at, map_color",
         );
       const patrolSummaryExecutable =
         missionContextExerciseId !== null
@@ -474,7 +477,7 @@ export function LiveMapPage() {
 
       let patrolRegistryQuery = supabase
         .from("patrols")
-        .select("id, patrol_code, patrol_name, pin_hash, is_enabled, created_at, owner_admin_id")
+        .select("id, patrol_code, patrol_name, pin_hash, is_enabled, created_at, owner_admin_id, map_color")
         .order("patrol_code", { ascending: true });
       if (restrictExercisesToOwner) {
         patrolRegistryQuery = patrolRegistryQuery.eq("owner_admin_id", ownerId);
@@ -505,7 +508,7 @@ export function LiveMapPage() {
       const patrolSessionsSelect = supabase
         .from("patrol_sessions")
         .select(
-          "id, exercise_id, patrol_id, mission_id, is_online, login_at, logout_at, last_status_at, current_status, patrols!inner(patrol_code, patrol_name), missions(mission_name)",
+          "id, exercise_id, patrol_id, mission_id, is_online, login_at, logout_at, last_status_at, current_status, patrols!inner(patrol_code, patrol_name, map_color), missions(mission_name)",
         );
       const patrolSessionsExecutable =
         missionContextExerciseId !== null
@@ -608,6 +611,7 @@ export function LiveMapPage() {
         lastAccuracy: (row.last_accuracy as number | null) ?? null,
         lastFixAt: (row.last_fix_at as string | null) ?? null,
         lastStatusAt: row.last_status_at as string,
+        mapColor: normalizePatrolMapColor((row.map_color as string | null) ?? null),
       }));
 
       const fallbackPatrolsFromSessions: LivePatrol[] = (
@@ -616,8 +620,16 @@ export function LiveMapPage() {
         .filter((row) => Boolean(row.is_online))
         .map((row) => {
           const patrolData = row.patrols as
-            | { patrol_code?: string; patrol_name?: string }
-            | Array<{ patrol_code?: string; patrol_name?: string }>
+            | {
+                patrol_code?: string;
+                patrol_name?: string;
+                map_color?: string | null;
+              }
+            | Array<{
+                patrol_code?: string;
+                patrol_name?: string;
+                map_color?: string | null;
+              }>
             | null;
           const missionData = row.missions as
             | { mission_name?: string }
@@ -642,6 +654,7 @@ export function LiveMapPage() {
             lastAccuracy: null,
             lastFixAt: null,
             lastStatusAt: row.last_status_at as string,
+            mapColor: normalizePatrolMapColor(patrol?.map_color ?? null),
           };
         });
 
@@ -688,6 +701,7 @@ export function LiveMapPage() {
         pinHash: (row.pin_hash as string | null) ?? "",
         isEnabled: Boolean(row.is_enabled),
         createdAt: row.created_at as string,
+        mapColor: normalizePatrolMapColor((row.map_color as string | null) ?? null),
       }));
 
       const nextAccessEvents: AdminAccessEvent[] = (
@@ -1368,6 +1382,7 @@ export function LiveMapPage() {
     setPatrolCodeInput("");
     setPatrolNameInput("");
     setPatrolPinInput("1234");
+    setPatrolMapColorInput(pickDefaultPatrolMapColor(registryItems));
     setPatrolEnabledInput(true);
   }
 
@@ -1676,6 +1691,10 @@ export function LiveMapPage() {
     setPatrolNameInput(item.patrolName);
     setPatrolPinInput(item.pinHash);
     setPatrolEnabledInput(item.isEnabled);
+    setPatrolMapColorInput(
+      normalizePatrolMapColor(item.mapColor) ??
+        pickDefaultPatrolMapColor(registryItems.filter((row) => row.id !== item.id)),
+    );
     setAdminView("patrols");
   }
 
@@ -1702,6 +1721,11 @@ export function LiveMapPage() {
         pinHash: pin,
         isEnabled: patrolEnabledInput,
         createdAt: new Date().toISOString(),
+        mapColor:
+          normalizePatrolMapColor(patrolMapColorInput) ??
+          pickDefaultPatrolMapColor(
+            registryItems.filter((row) => row.id !== (editingPatrolId ?? "")),
+          ),
       };
 
       setRegistryItems((current) => {
@@ -1728,6 +1752,12 @@ export function LiveMapPage() {
         throw new Error("Sessione senza adminId: effettua di nuovo il login.");
       }
 
+      const normalizedMap =
+        normalizePatrolMapColor(patrolMapColorInput) ??
+        pickDefaultPatrolMapColor(
+          registryItems.filter((row) => row.id !== (editingPatrolId ?? "")),
+        );
+
       if (editingPatrolId) {
         const { data, error } = await supabase
           .from("patrols")
@@ -1736,6 +1766,7 @@ export function LiveMapPage() {
             patrol_name: name,
             pin_hash: pin,
             is_enabled: patrolEnabledInput,
+            map_color: normalizedMap,
           })
           .select("id, patrol_code")
           .eq("id", editingPatrolId)
@@ -1759,6 +1790,7 @@ export function LiveMapPage() {
             pin_hash: pin,
             is_enabled: patrolEnabledInput,
             owner_admin_id: patrolOwnerId,
+            map_color: normalizedMap,
           })
           .select("id, patrol_code");
 
@@ -3670,6 +3702,22 @@ export function LiveMapPage() {
                       <label htmlFor="patrol-enabled">
                         Pattuglia abilitata all&apos;uso
                       </label>
+                    </div>
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <label htmlFor="patrol-map-color">Colore su mappa</label>
+                    <div className={styles.checkboxRow} style={{ gap: 12 }}>
+                      <input
+                        id="patrol-map-color"
+                        onChange={(event) => setPatrolMapColorInput(event.target.value)}
+                        type="color"
+                        value={patrolMapColorInput}
+                        style={{ width: 48, height: 32, padding: 0, border: "none" }}
+                      />
+                      <span style={{ fontSize: 13, opacity: 0.85 }}>
+                        Marker e (in futuro) traccia percorso. Se assente in DB, si usa il colore
+                        dello stato.
+                      </span>
                     </div>
                   </div>
                 </div>

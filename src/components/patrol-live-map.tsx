@@ -16,7 +16,7 @@ import type { LatLngExpression } from "leaflet";
 import {
   formatFixTimestamp,
   formatWaypointTimestamp,
-  getStatusColor,
+  getPatrolMarkerFillColor,
   getStatusLabel,
   hasCoordinates,
   tacticalWaypointSourceLabel,
@@ -50,7 +50,7 @@ function waypointMobileDivIcon(label: string | null): L.DivIcon {
 
 /** Look app mobile: cerchio stato + bordo bianco + pillola nera nome maiuscolo. */
 function patrolMobileDivIcon(patrol: LivePatrol, selected: boolean): L.DivIcon {
-  const fill = getStatusColor(patrol.status);
+  const fill = getPatrolMarkerFillColor(patrol);
   const raw = patrol.patrolName?.trim() || patrol.patrolCode || "?";
   const chip = escapeHtmlIcon(raw.slice(0, 18).toUpperCase());
   const sel = selected ? " mobile-patrol-dot--selected" : "";
@@ -225,6 +225,7 @@ function PatrolMarker({
       patrol.status,
       patrol.patrolCode,
       patrol.patrolName,
+      patrol.mapColor,
       selected,
     ],
   );
