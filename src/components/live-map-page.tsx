@@ -28,6 +28,7 @@ import {
   formatSessionDuration,
   formatTimelineStepDuration,
   formatTimeOnly,
+  formatPatrolMapColorForExport,
   getStatusColor,
   getStatusLabel,
   hasCoordinates,
@@ -2448,8 +2449,7 @@ export function LiveMapPage() {
       ];
 
       const optionalPin = includePinInExport ? [item.pinHash] : [];
-      const colorTraccia =
-        normalizePatrolMapColor(item.mapColor) ?? "— (default stato)";
+      const colorTraccia = formatPatrolMapColorForExport(item.mapColor);
 
       return [
         ...baseRow,

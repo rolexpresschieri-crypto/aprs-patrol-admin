@@ -146,6 +146,35 @@ export const PATROL_MAP_COLOR_PALETTE = [
   "#5D4037",
 ] as const;
 
+/** Nomi colore traccia in italiano (palette + valori comuni fuori palette). */
+const PATROL_MAP_COLOR_LABELS_IT: Record<string, string> = {
+  "#1171B7": "Blu",
+  "#34D12C": "Verde",
+  "#FFB300": "Ambra / giallo oro",
+  "#D91F2A": "Rosso",
+  "#7E57C2": "Viola",
+  "#0097A7": "Teal / verde acqua",
+  "#C2185B": "Fucsia",
+  "#5D4037": "Marrone",
+  "#FFA726": "Arancio",
+  "#FF1A14": "Rosso acceso",
+  "#FFF100": "Giallo",
+  "#90A4AE": "Grigio acciaio",
+  "#079B42": "Verde intenso",
+};
+
+/**
+ * Etichetta per CSV/PDF: solo descrizione in italiano (nessun codice hex).
+ * Se `map_color` è assente, la traccia sulla mappa segue il colore di stato.
+ */
+export function formatPatrolMapColorForExport(raw: string | null | undefined): string {
+  const hex = normalizePatrolMapColor(raw);
+  if (!hex) {
+    return "Predefinito (come colore stato sulla mappa)";
+  }
+  return PATROL_MAP_COLOR_LABELS_IT[hex] ?? "Colore personalizzato";
+}
+
 export function pickDefaultPatrolMapColor(items: PatrolRegistryItem[]): string {
   const used = new Set(
     items
