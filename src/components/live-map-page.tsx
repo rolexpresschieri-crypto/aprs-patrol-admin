@@ -2448,10 +2448,13 @@ export function LiveMapPage() {
       ];
 
       const optionalPin = includePinInExport ? [item.pinHash] : [];
+      const colorTraccia =
+        normalizePatrolMapColor(item.mapColor) ?? "— (default stato)";
 
       return [
         ...baseRow,
         ...optionalPin,
+        colorTraccia,
         item.isEnabled ? "Abilitata" : "Disabilitata",
         formatFixTimestamp(item.createdAt),
       ];
@@ -2465,8 +2468,8 @@ export function LiveMapPage() {
     }
 
     const headRow = includePinInExport
-      ? ["Codice", "Nome", "PIN", "Stato", "Creata il"]
-      : ["Codice", "Nome", "Stato", "Creata il"];
+      ? ["Codice", "Nome", "PIN", "Colore traccia", "Stato", "Creata il"]
+      : ["Codice", "Nome", "Colore traccia", "Stato", "Creata il"];
 
     const rows = [
       headRow,
@@ -2500,8 +2503,8 @@ export function LiveMapPage() {
     }
 
     const headRow = includePinInExport
-      ? ["Codice", "Nome", "PIN", "Stato", "Creata il"]
-      : ["Codice", "Nome", "Stato", "Creata il"];
+      ? ["Codice", "Nome", "PIN", "Colore traccia", "Stato", "Creata il"]
+      : ["Codice", "Nome", "Colore traccia", "Stato", "Creata il"];
 
     const doc = new jsPDF({
       orientation: "portrait",
