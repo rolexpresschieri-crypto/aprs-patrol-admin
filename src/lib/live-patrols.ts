@@ -146,33 +146,99 @@ export const PATROL_MAP_COLOR_PALETTE = [
   "#5D4037",
 ] as const;
 
-/** Nomi colore traccia in italiano (palette + valori comuni fuori palette). */
+/** Nomi semplificati rosso/blu/verde/celeste… (palette + stati/UI comuni). */
 const PATROL_MAP_COLOR_LABELS_IT: Record<string, string> = {
   "#1171B7": "Blu",
   "#34D12C": "Verde",
-  "#FFB300": "Ambra / giallo oro",
+  "#FFB300": "Giallo",
   "#D91F2A": "Rosso",
   "#7E57C2": "Viola",
-  "#0097A7": "Teal / verde acqua",
-  "#C2185B": "Fucsia",
+  "#0097A7": "Celeste",
+  "#C2185B": "Rosa",
   "#5D4037": "Marrone",
   "#FFA726": "Arancio",
-  "#FF1A14": "Rosso acceso",
+  "#FF1A14": "Rosso",
   "#FFF100": "Giallo",
-  "#90A4AE": "Grigio acciaio",
-  "#079B42": "Verde intenso",
+  "#90A4AE": "Grigio",
+  "#079B42": "Verde",
 };
 
+function italianColorWordFromHex(hex: string): string {
+  const r = Number.parseInt(hex.slice(1, 3), 16);
+  const g = Number.parseInt(hex.slice(3, 5), 16);
+  const b = Number.parseInt(hex.slice(5, 7), 16);
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const d = max - min;
+  const l = (max + min) / 2;
+
+  let h = 0;
+  if (d > 1e-6) {
+    if (max === rn) {
+      h = ((gn - bn) / d + (gn < bn ? 6 : 0)) / 6;
+    } else if (max === gn) {
+      h = ((bn - rn) / d + 2) / 6;
+    } else {
+      h = ((rn - gn) / d + 4) / 6;
+    }
+  }
+  h *= 360;
+
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+
+  if (l < 0.1) {
+    return "Nero";
+  }
+  if (l > 0.93 && s < 0.12) {
+    return "Bianco";
+  }
+  if (s < 0.12) {
+    return "Grigio";
+  }
+  if (s < 0.28 && l > 0.12 && l < 0.45) {
+    return "Marrone";
+  }
+
+  if (h < 12 || h >= 352) {
+    return "Rosso";
+  }
+  if (h < 42) {
+    return "Arancio";
+  }
+  if (h < 62) {
+    return "Giallo";
+  }
+  if (h < 150) {
+    return "Verde";
+  }
+  if (h < 188) {
+    return "Celeste";
+  }
+  if (h < 258) {
+    return "Blu";
+  }
+  if (h < 292) {
+    return "Viola";
+  }
+  if (h < 337) {
+    return "Rosa";
+  }
+  return "Rosso";
+}
+
 /**
- * Etichetta per CSV/PDF: solo descrizione in italiano (nessun codice hex).
- * Se `map_color` è assente, la traccia sulla mappa segue il colore di stato.
+ * Etichetta CSV/PDF: solo nome colore in italiano (rosso, blu, verde, celeste, …).
+ * Per hex non in elenco si stima la tonalità; senza `map_color` si usa il colore di stato sulla mappa.
  */
 export function formatPatrolMapColorForExport(raw: string | null | undefined): string {
   const hex = normalizePatrolMapColor(raw);
   if (!hex) {
-    return "Predefinito (come colore stato sulla mappa)";
+    return "Predefinito (come stato sulla mappa)";
   }
-  return PATROL_MAP_COLOR_LABELS_IT[hex] ?? "Colore personalizzato";
+  return PATROL_MAP_COLOR_LABELS_IT[hex] ?? italianColorWordFromHex(hex);
 }
 
 export function pickDefaultPatrolMapColor(items: PatrolRegistryItem[]): string {
