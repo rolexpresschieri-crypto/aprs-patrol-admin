@@ -15,7 +15,7 @@ export type LivePatrol = {
   lastAccuracy: number | null;
   lastFixAt: string | null;
   lastStatusAt: string;
-  /** `#RRGGBB` sulla tabella `patrols`; mappa / marker identificativo pattuglia. */
+  /** `#RRGGBB` sulla tabella `patrols`: solo colore traccia sulla mappa; il marker usa il colore di stato. */
   mapColor: string | null;
 };
 
@@ -121,8 +121,13 @@ export function normalizePatrolMapColor(input: string | null | undefined): strin
   return trimmed.toUpperCase();
 }
 
-/** Colore marker mappa: `map_color` pattuglia, altrimenti colore stato. */
-export function getPatrolMarkerFillColor(patrol: {
+/** Colore marker mappa = colore stato operativo della pattuglia. */
+export function getPatrolMarkerFillColor(patrol: { status: string }) {
+  return getStatusColor(patrol.status);
+}
+
+/** Colore traccia sulla mappa: `map_color` pattuglia, altrimenti stesso fallback del marker (stato). */
+export function getPatrolTrackStrokeColor(patrol: {
   status: string;
   mapColor: string | null;
 }) {

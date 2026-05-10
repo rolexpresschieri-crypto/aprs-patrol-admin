@@ -18,6 +18,7 @@ import {
   formatFixTimestamp,
   formatWaypointTimestamp,
   getPatrolMarkerFillColor,
+  getPatrolTrackStrokeColor,
   getStatusLabel,
   hasCoordinates,
   tacticalWaypointSourceLabel,
@@ -450,7 +451,7 @@ export default function PatrolLiveMap({
           <Polyline
             key={`track-${patrol.sessionId}`}
             pathOptions={{
-              color: getPatrolMarkerFillColor(patrol),
+              color: getPatrolTrackStrokeColor(patrol),
               weight: 4,
               opacity: 0.82,
               lineJoin: "round",

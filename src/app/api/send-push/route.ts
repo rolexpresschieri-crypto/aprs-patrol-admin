@@ -164,7 +164,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "Nessun token FCM registrato per questa sessione. Verifica che l'app pattuglia abbia Firebase e abbia eseguito login dopo l'aggiornamento.",
+          "Nessun token FCM registrato per questa sessione: l’app pattuglia (Android) deve inizializzare Firebase Messaging con gli stessi dart-define FIREBASE_ANDROID_* indicati nel progetto toc_app (`firebase_init.dart`), ricompilare l’APK e rifare login pattuglia. Notifiche e permesso sistema devono essere consentiti.",
         code: "NO_FCM_TOKEN",
       },
       { status: 404 },
