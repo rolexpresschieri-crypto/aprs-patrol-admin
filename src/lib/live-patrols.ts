@@ -121,6 +121,11 @@ export function normalizePatrolMapColor(input: string | null | undefined): strin
   return trimmed.toUpperCase();
 }
 
+/** Codici/etichette operativi: sempre maiuscolo (anche in digitazione). */
+export function normalizeUppercaseField(value: string): string {
+  return value.toLocaleUpperCase("en-US");
+}
+
 /** Colore marker mappa = colore stato operativo della pattuglia. */
 export function getPatrolMarkerFillColor(patrol: { status: string }) {
   return getStatusColor(patrol.status);

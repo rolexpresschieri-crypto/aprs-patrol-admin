@@ -1699,6 +1699,10 @@
   outline: none;
 }
 
+.uppercaseField {
+  text-transform: uppercase;
+}
+
 .fieldGroup select {
   width: 100%;
   border: 1px solid #2b4278;

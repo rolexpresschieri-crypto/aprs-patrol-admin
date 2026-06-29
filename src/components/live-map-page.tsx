@@ -37,6 +37,7 @@ import {
   mockPatrolRegistry,
   mockWaypoints,
   normalizePatrolMapColor,
+  normalizeUppercaseField,
   PATROL_TRACK_HISTORY_MINUTES,
   pickDefaultPatrolMapColor,
   groupPatrolTrackPointsBySession,
@@ -1718,8 +1719,8 @@ export function LiveMapPage() {
 
   function startEditingPatrol(item: PatrolRegistryItem) {
     setEditingPatrolId(item.id);
-    setPatrolCodeInput(item.patrolCode);
-    setPatrolNameInput(item.patrolName);
+    setPatrolCodeInput(normalizeUppercaseField(item.patrolCode));
+    setPatrolNameInput(normalizeUppercaseField(item.patrolName));
     setPatrolPinInput(item.pinHash);
     setPatrolEnabledInput(item.isEnabled);
     setPatrolMapColorInput(
@@ -1735,8 +1736,8 @@ export function LiveMapPage() {
       return;
     }
 
-    const code = patrolCodeInput.trim().toUpperCase();
-    const name = patrolNameInput.trim().toUpperCase();
+    const code = normalizeUppercaseField(patrolCodeInput.trim());
+    const name = normalizeUppercaseField(patrolNameInput.trim());
     const pin = patrolPinInput.trim();
 
     if (!code || !name || !pin) {
@@ -3704,25 +3705,45 @@ export function LiveMapPage() {
                   <div className={styles.fieldGroup}>
                     <label htmlFor="patrol-code">Codice pattuglia</label>
                     <input
-                      id="patrol-code"
+                      autoCapitalize="characters"
                       autoComplete="off"
-                      value={patrolCodeInput}
+                      className={styles.uppercaseField}
+                      id="patrol-code"
+                      onBlur={(event) =>
+                        setPatrolCodeInput(
+                          normalizeUppercaseField(event.currentTarget.value),
+                        )
+                      }
                       onChange={(event) =>
-                        setPatrolCodeInput(event.target.value.toUpperCase())
+                        setPatrolCodeInput(
+                          normalizeUppercaseField(event.currentTarget.value),
+                        )
                       }
                       placeholder="Codice pattuglia"
+                      spellCheck={false}
+                      value={patrolCodeInput}
                     />
                   </div>
                   <div className={styles.fieldGroup}>
                     <label htmlFor="patrol-name">Nome pattuglia</label>
                     <input
-                      id="patrol-name"
+                      autoCapitalize="characters"
                       autoComplete="off"
-                      value={patrolNameInput}
+                      className={styles.uppercaseField}
+                      id="patrol-name"
+                      onBlur={(event) =>
+                        setPatrolNameInput(
+                          normalizeUppercaseField(event.currentTarget.value),
+                        )
+                      }
                       onChange={(event) =>
-                        setPatrolNameInput(event.target.value.toUpperCase())
+                        setPatrolNameInput(
+                          normalizeUppercaseField(event.currentTarget.value),
+                        )
                       }
                       placeholder="Nome pattuglia"
+                      spellCheck={false}
+                      value={patrolNameInput}
                     />
                   </div>
                   <div className={styles.fieldGroup}>

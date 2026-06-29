@@ -23,6 +23,7 @@ import pageStyles from "./tactical-waypoints-full-page.module.css";
 import {
   formatWaypointTimestamp,
   mockWaypoints,
+  normalizeUppercaseField,
   sortTacticalWaypointsAlphabetically,
   tacticalWaypointSourceLabel,
   tacticalWaypointsFromRows,
@@ -361,7 +362,7 @@ export function TacticalWaypointsFullPage() {
     setWaypointFormError(null);
     setEditingWaypointId(target.id);
     setWaypointExerciseId(target.exerciseId);
-    setWaypointLabel(target.label ?? "");
+    setWaypointLabel(normalizeUppercaseField(target.label ?? ""));
     setWaypointLat(String(target.latitude));
     setWaypointLon(String(target.longitude));
     setWaypointAlt(target.altitudeM !== null ? String(target.altitudeM) : "");
@@ -381,7 +382,7 @@ export function TacticalWaypointsFullPage() {
     setWaypointFormError(null);
     setEditingWaypointId(waypoint.id);
     setWaypointExerciseId(waypoint.exerciseId);
-    setWaypointLabel(waypoint.label ?? "");
+    setWaypointLabel(normalizeUppercaseField(waypoint.label ?? ""));
     setWaypointLat(String(waypoint.latitude));
     setWaypointLon(String(waypoint.longitude));
     setWaypointAlt(waypoint.altitudeM !== null ? String(waypoint.altitudeM) : "");
@@ -429,7 +430,7 @@ export function TacticalWaypointsFullPage() {
     }
 
     const labelNormalized = waypointLabel.trim()
-      ? waypointLabel.trim().toUpperCase()
+      ? normalizeUppercaseField(waypointLabel.trim())
       : null;
 
     setWaypointBusy(true);
@@ -642,13 +643,23 @@ export function TacticalWaypointsFullPage() {
                       <div className={mapStyles.fieldGroup}>
                         <label htmlFor="wp-label-full">Etichetta</label>
                         <input
-                          id="wp-label-full"
+                          autoCapitalize="characters"
                           autoComplete="off"
-                          placeholder="Es. CP nord / Obiettivo"
-                          value={waypointLabel}
-                          onChange={(event) =>
-                            setWaypointLabel(event.target.value.toUpperCase())
+                          className={mapStyles.uppercaseField}
+                          id="wp-label-full"
+                          onBlur={(event) =>
+                            setWaypointLabel(
+                              normalizeUppercaseField(event.currentTarget.value),
+                            )
                           }
+                          onChange={(event) =>
+                            setWaypointLabel(
+                              normalizeUppercaseField(event.currentTarget.value),
+                            )
+                          }
+                          placeholder="Es. CP nord / Obiettivo"
+                          spellCheck={false}
+                          value={waypointLabel}
                         />
                       </div>
 
