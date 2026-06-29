@@ -2556,7 +2556,8 @@ export function LiveMapPage() {
   }
 
   async function handleBackendLogin() {
-    const code = loginCode.trim().toLowerCase();
+    const code = loginCode.trim().toUpperCase();
+    const codeDb = code.toLowerCase();
     const password = loginPassword.trim();
 
     if (!code || !password) {
@@ -2584,7 +2585,7 @@ export function LiveMapPage() {
       const { data, error } = await supabase
         .from("admins")
         .select("id, admin_code, admin_name, pin_hash, role, is_enabled")
-        .eq("admin_code", code)
+        .eq("admin_code", codeDb)
         .maybeSingle();
 
       if (error) {
@@ -2765,7 +2766,7 @@ export function LiveMapPage() {
     setAdminsFormCode("");
     setAdminsFormName("");
     setAdminsFormPin("");
-    setAdminsFormRole("viewer");
+    setAdminsFormRole("admin");
     setAdminsFormEnabled(true);
     setAdminsModalError(null);
   }
@@ -2934,7 +2935,9 @@ export function LiveMapPage() {
                 autoComplete="username"
                 className={styles.authInput}
                 id="backend-login"
-                onChange={(event) => setLoginCode(event.target.value)}
+                onChange={(event) =>
+                  setLoginCode(event.target.value.toUpperCase())
+                }
                 placeholder="Codice admin o viewer"
                 value={loginCode}
               />
@@ -3180,7 +3183,7 @@ export function LiveMapPage() {
             <label htmlFor="search-term">Ricerca pattuglia</label>
             <input
               id="search-term"
-              placeholder="PTG001 o LUPO"
+              placeholder="Codice o nome pattuglia"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
             />
@@ -3704,7 +3707,7 @@ export function LiveMapPage() {
                       id="patrol-code"
                       value={patrolCodeInput}
                       onChange={(event) => setPatrolCodeInput(event.target.value)}
-                      placeholder="PTG006"
+                      placeholder="Codice pattuglia"
                     />
                   </div>
                   <div className={styles.fieldGroup}>
@@ -3713,7 +3716,7 @@ export function LiveMapPage() {
                       id="patrol-name"
                       value={patrolNameInput}
                       onChange={(event) => setPatrolNameInput(event.target.value)}
-                      placeholder="FALCO"
+                      placeholder="Nome pattuglia"
                     />
                   </div>
                   <div className={styles.fieldGroup}>
@@ -3722,7 +3725,7 @@ export function LiveMapPage() {
                       id="patrol-pin"
                       value={patrolPinInput}
                       onChange={(event) => setPatrolPinInput(event.target.value)}
-                      placeholder="1234"
+                      placeholder="PIN"
                     />
                   </div>
                   <div className={styles.fieldGroup}>
@@ -4611,7 +4614,7 @@ export function LiveMapPage() {
                             disabled={adminsModalLoading}
                             onChange={(event) =>
                               setAdminsFormCode(
-                                event.target.value.trim().toLowerCase(),
+                                event.target.value.trim().toUpperCase(),
                               )
                             }
                             value={adminsFormCode}
