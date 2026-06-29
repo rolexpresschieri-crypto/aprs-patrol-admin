@@ -428,6 +428,10 @@ export function TacticalWaypointsFullPage() {
       return;
     }
 
+    const labelNormalized = waypointLabel.trim()
+      ? waypointLabel.trim().toUpperCase()
+      : null;
+
     setWaypointBusy(true);
     setWaypointFormError(null);
 
@@ -440,7 +444,7 @@ export function TacticalWaypointsFullPage() {
             latitude: lat,
             longitude: lon,
             altitude_m: altitudeParsed,
-            label: waypointLabel.trim() ? waypointLabel.trim() : null,
+            label: labelNormalized,
           })
           .eq("id", editingWaypointId);
 
@@ -455,7 +459,7 @@ export function TacticalWaypointsFullPage() {
           latitude: lat,
           longitude: lon,
           altitude_m: altitudeParsed,
-          label: waypointLabel.trim() ? waypointLabel.trim() : null,
+          label: labelNormalized,
           created_by_admin_code: session.code,
           source: "backoffice",
         });
@@ -639,9 +643,12 @@ export function TacticalWaypointsFullPage() {
                         <label htmlFor="wp-label-full">Etichetta</label>
                         <input
                           id="wp-label-full"
+                          autoComplete="off"
                           placeholder="Es. CP nord / Obiettivo"
                           value={waypointLabel}
-                          onChange={(event) => setWaypointLabel(event.target.value)}
+                          onChange={(event) =>
+                            setWaypointLabel(event.target.value.toUpperCase())
+                          }
                         />
                       </div>
 

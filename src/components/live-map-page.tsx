@@ -3705,8 +3705,11 @@ export function LiveMapPage() {
                     <label htmlFor="patrol-code">Codice pattuglia</label>
                     <input
                       id="patrol-code"
+                      autoComplete="off"
                       value={patrolCodeInput}
-                      onChange={(event) => setPatrolCodeInput(event.target.value)}
+                      onChange={(event) =>
+                        setPatrolCodeInput(event.target.value.toUpperCase())
+                      }
                       placeholder="Codice pattuglia"
                     />
                   </div>
@@ -3714,8 +3717,11 @@ export function LiveMapPage() {
                     <label htmlFor="patrol-name">Nome pattuglia</label>
                     <input
                       id="patrol-name"
+                      autoComplete="off"
                       value={patrolNameInput}
-                      onChange={(event) => setPatrolNameInput(event.target.value)}
+                      onChange={(event) =>
+                        setPatrolNameInput(event.target.value.toUpperCase())
+                      }
                       placeholder="Nome pattuglia"
                     />
                   </div>
